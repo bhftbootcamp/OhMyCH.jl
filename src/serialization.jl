@@ -42,21 +42,19 @@ end
 @inline function read_leb128(s::Serializer)
     value = 0
     shift = 0
-    while !eof(s)
+    while true
+        if eof(s)
+            error("Unexpected end of file while reading LEB128 number.")
+        end
         byte = read(s, UInt8)
         value |= (UInt64(byte & 0x7f) << shift)
         if (byte & 0x80) == 0
-            break
+            return value
         end
         shift += 7
         if shift > 63
             error("LEB128 number is too long.")
         end
-    end
-    if eof(s)
-        error("Unexpected end of file while reading LEB128 number.")
-    else
-        value
     end
 end
 
