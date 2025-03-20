@@ -71,14 +71,14 @@ import OhMyCH: Serializer, serialize, deserialize
         s = Serializer()
 
         @test serialize(s, String, "1234567890abcdef") == 17
-        @test serialize(s, String, "") == 1
         @test serialize(s, String, "안녕하세요!") == 17
+        @test serialize(s, String, "") == 1
 
         seekstart(s)
 
         @test deserialize(s, String) == "1234567890abcdef"
-        @test deserialize(s, String) == ""
         @test deserialize(s, String) == "안녕하세요!"
+        @test deserialize(s, String) == ""
 
         @test eof(s)
     end
