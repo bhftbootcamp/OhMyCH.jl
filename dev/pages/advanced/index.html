@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>For Developers · OhMyCH.jl</title><meta name="title" content="For Developers · OhMyCH.jl"/><meta property="og:title" content="For Developers · OhMyCH.jl"/><meta property="twitter:title" content="For Developers · OhMyCH.jl"/><meta name="description" content="Documentation for OhMyCH.jl."/><meta property="og:description" content="Documentation for OhMyCH.jl."/><meta property="twitter:description" content="Documentation for OhMyCH.jl."/><meta property="og:url" content="https://bhftbootcamp.github.io/OhMyCH.jl/pages/advanced/"/><meta property="twitter:url" content="https://bhftbootcamp.github.io/OhMyCH.jl/pages/advanced/"/><link rel="canonical" href="https://bhftbootcamp.github.io/OhMyCH.jl/pages/advanced/"/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script><link href="../../assets/favicon.ico" rel="icon" type="image/x-icon"/></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">OhMyCH.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><a class="tocitem" href="../api_reference/">API Reference</a></li><li><a class="tocitem" href="../constants/">Status codes</a></li><li class="is-active"><a class="tocitem" href>For Developers</a><ul class="internal"><li><a class="tocitem" href="#Data-Flow"><span>Data Flow</span></a></li><li><a class="tocitem" href="#Serializer"><span>Serializer</span></a></li><li><a class="tocitem" href="#supported_formats"><span>Binary formats</span></a></li><li><a class="tocitem" href="#Column-types"><span>Column types</span></a></li><li><a class="tocitem" href="#Binary-iterators"><span>Binary iterators</span></a></li><li><a class="tocitem" href="#content_encoding"><span>Content encoding</span></a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>For Developers</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>For Developers</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/bhftbootcamp/OhMyCH.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/bhftbootcamp/OhMyCH.jl/blob/master/docs/src/pages/advanced.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="For-Developers"><a class="docs-heading-anchor" href="#For-Developers">For Developers</a><a id="For-Developers-1"></a><a class="docs-heading-anchor-permalink" href="#For-Developers" title="Permalink"></a></h1><p>This section contains various information that may be useful for developing and understanding the package in more detail.</p><h2 id="Data-Flow"><a class="docs-heading-anchor" href="#Data-Flow">Data Flow</a><a id="Data-Flow-1"></a><a class="docs-heading-anchor-permalink" href="#Data-Flow" title="Permalink"></a></h2><p>The following diagram illustrates the process of data handling in <strong>OhMyCH</strong>, including iteration, deserialization, and returning data to the user:</p><pre><code class="language-plaintext hljs">                              +-------------------+
+                              |   Input Data      |
+                              |  (Vector{UInt8})  |
+                              +-------------------+
+                                       |
+                +----------------------+-----------------------+
+                |                                              |
+ +---------------------------+               +------------------------------------+
+ |         RowBinary         |               |     RowBinaryWithNamesAndTypes     |
+ +---------------------------+               +------------------------------------+
+                |                                              |
+                v                                              v
+ +---------------------------+               +------------------------------------+
+ |        User type `T`      |               |    Parse Column Names and Types    |
+ |   (e.g., `T` or `Tuple`)  |               |                                    |
+ +---------------------------+               +------------------------------------+
+                |                                              |
+                +----------------------+-----------------------+
+                                       |
+                                       v
+                              +-------------------+
+                  +---------&gt; |  Start Iteration  |
+                  |           +-------------------+
+                  |                    |
+                  |                    v
+                  |           +-------------------+
+                  |           | Read Binary Chunk |
+                  |           +-------------------+
+                  |                    |
+                  |                    v
+                  |           +-------------------+
+                  |           |  Deserialize Row  |
+                  |           +-------------------+
+                  |                    |
+                  |                    v
+                  |           +-------------------+
+                  |           | Return Row to User|
+                  |           +-------------------+
+                  |                    |
+                  |                    v
+                  |           +-------------------+
+                  |           |   Check for EOF   |
+                  |           |   - More Data?    |
+                  |           +-------------------+
+                  |                    |
+                  +--------------------+
+                                       |
+                                       v
+                             +-------------------+
+                             |   End Iteration   |
+                             +-------------------+</code></pre><h2 id="Serializer"><a class="docs-heading-anchor" href="#Serializer">Serializer</a><a id="Serializer-1"></a><a class="docs-heading-anchor-permalink" href="#Serializer" title="Permalink"></a></h2><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="OhMyCH.Serializer" href="#OhMyCH.Serializer"><code>OhMyCH.Serializer</code></a> — <span class="docstring-category">Type</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">Serializer{I&lt;:IO}</code></pre><p>Custom IO wrapper for (de)serializing binary data streams.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/bhftbootcamp/OhMyCH.jl/blob/6b78b87fc3a9682837a37b5947f84508992b493a/src/serialization.jl#L3-L7">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="OhMyCH.serialize" href="#OhMyCH.serialize"><code>OhMyCH.serialize</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">serialize(s::Serializer, value::T) -&gt; Int</code></pre><p>Writes the byte representation of <code>value</code> to buffer <code>s</code>.</p><p><strong>Examples</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using ClickHouse: Serializer, serialize, deserialize
+
+julia&gt; s = Serializer();
+
+julia&gt; serialize(s, UInt8, UInt8(10))
+1
+
+julia&gt; serialize(s, Int32, Int32(100))
+4
+
+julia&gt; serialize(s, Float64, Float64(1000.0))
+8
+
+julia&gt; serialize(s, String, &quot;Hello, World!!!&quot;)
+16
+
+julia&gt; seekstart(s.io);
+
+julia&gt; deserialize(s, UInt8)
+0x0a
+
+julia&gt; deserialize(s, Int32)
+100
+
+julia&gt; deserialize(s, Float64)
+1000.0
+
+julia&gt; deserialize(s, String)
+&quot;Hello, World!!!&quot;</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/bhftbootcamp/OhMyCH.jl/blob/6b78b87fc3a9682837a37b5947f84508992b493a/src/serialization.jl#L61-L99">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="OhMyCH.deserialize" href="#OhMyCH.deserialize"><code>OhMyCH.deserialize</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">deserialize(s::Serializer, T::Type) -&gt; T</code></pre><p>Reads a sequence of bytes corresponding to type <code>T</code> from buffer <code>s</code>, and then creates an object from them.</p><p><strong>Examples</strong></p><pre><code class="language-julia-repl hljs">julia&gt; using ClickHouse: Serializer, serialize, deserialize
+
+julia&gt; s = Serializer([0x0a, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x8f, 0x40]);
+
+julia&gt; deserialize(s, UInt8)
+0x0a
+
+julia&gt; deserialize(s, Int32)
+100
+
+julia&gt; deserialize(s, Float64)
+1000.0</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/bhftbootcamp/OhMyCH.jl/blob/6b78b87fc3a9682837a37b5947f84508992b493a/src/serialization.jl#L218-L239">source</a></section></article><h2 id="supported_formats"><a class="docs-heading-anchor" href="#supported_formats">Binary formats</a><a id="supported_formats-1"></a><a class="docs-heading-anchor-permalink" href="#supported_formats" title="Permalink"></a></h2><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="OhMyCH.RowBinaryResult" href="#OhMyCH.RowBinaryResult"><code>OhMyCH.RowBinaryResult</code></a> — <span class="docstring-category">Type</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">RowBinaryResult</code></pre><p>Abstract supertype for all row binary data results.</p><p>This type is a base for binary data representations, such as <code>RowBinary</code> and <code>RowBinaryWithNamesAndTypes</code>.</p><p><strong>See Also</strong></p><ul><li><a href="#OhMyCH.RowBinary"><code>RowBinary</code></a></li><li><a href="#OhMyCH.RowBinaryWithNamesAndTypes"><code>RowBinaryWithNamesAndTypes</code></a></li></ul></div><a class="docs-sourcelink" target="_blank" href="https://github.com/bhftbootcamp/OhMyCH.jl/blob/6b78b87fc3a9682837a37b5947f84508992b493a/src/row_binary.jl#L3-L14">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="OhMyCH.RowBinary" href="#OhMyCH.RowBinary"><code>OhMyCH.RowBinary</code></a> — <span class="docstring-category">Type</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">RowBinary &lt;: RowBinaryResult</code></pre><p>This format represents binary rows of data, without specifying their types and names. Data can be extracted using the <a href="../api_reference/#Base.eachrow"><code>eachrow</code></a> or <a href="../api_reference/#Base.collect"><code>collect</code></a> methods with the column types specified.</p><p>See more in <a href="https://clickhouse.com/docs/en/sql-reference/formats#rowbinary"><code>ClickHouse Docs</code></a>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/bhftbootcamp/OhMyCH.jl/blob/6b78b87fc3a9682837a37b5947f84508992b493a/src/row_binary.jl#L17-L24">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="OhMyCH.RowBinaryWithNamesAndTypes" href="#OhMyCH.RowBinaryWithNamesAndTypes"><code>OhMyCH.RowBinaryWithNamesAndTypes</code></a> — <span class="docstring-category">Type</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">RowBinaryWithNamesAndTypes &lt;: RowBinaryResult</code></pre><p>This format represents binary rows of data containing information about column types and their names. Data can be extracted using the <a href="../api_reference/#Base.eachrow"><code>eachrow</code></a> or <a href="../api_reference/#Base.collect"><code>collect</code></a> methods.</p><p>See more in <a href="https://clickhouse.com/docs/en/sql-reference/formats#rowbinarywithnamesandtypes"><code>ClickHouse Docs</code></a>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/bhftbootcamp/OhMyCH.jl/blob/6b78b87fc3a9682837a37b5947f84508992b493a/src/row_binary.jl#L44-L51">source</a></section></article><h2 id="Column-types"><a class="docs-heading-anchor" href="#Column-types">Column types</a><a id="Column-types-1"></a><a class="docs-heading-anchor-permalink" href="#Column-types" title="Permalink"></a></h2><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="OhMyCH.parse_column_type" href="#OhMyCH.parse_column_type"><code>OhMyCH.parse_column_type</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">parse_column_type(type_str::String)</code></pre><p>Parses a ClickHouse-like type string and returns the corresponding Julia type.</p><p>See also <a href="../api_reference/#column_types"><code>Supported column types</code></a>.</p><p><strong>Examples</strong></p><pre><code class="language-julia-repl hljs">julia&gt; parse_column_type(&quot;LowCardinality(String)&quot;)
+String
+
+julia&gt; parse_column_type(&quot;Nullable(Decimal(9,2))&quot;)
+Union{Nothing,Decimal{9,2}}
+
+julia&gt; parse_column_type(&quot;Array(Tuple(Int8, UInt16))&quot;)
+Vector{Tuple{Int8,UInt16}}</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/bhftbootcamp/OhMyCH.jl/blob/6b78b87fc3a9682837a37b5947f84508992b493a/src/column_types.jl#L99-L118">source</a></section></article><h2 id="Binary-iterators"><a class="docs-heading-anchor" href="#Binary-iterators">Binary iterators</a><a id="Binary-iterators-1"></a><a class="docs-heading-anchor-permalink" href="#Binary-iterators" title="Permalink"></a></h2><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="OhMyCH.RowToBinaryIter" href="#OhMyCH.RowToBinaryIter"><code>OhMyCH.RowToBinaryIter</code></a> — <span class="docstring-category">Type</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">RowToBinaryIter{T}</code></pre><p>Iterator for converting rows into serialized binary data in chunks.</p><p><strong>Fields</strong></p><ul><li><code>items::AbstractVector{T}</code>: Collection of rows to be serialized.</li><li><code>chunk_size::Int</code>: Maximum size of serialized chunk in bytes.</li><li><code>serializer::Serializer</code>: Serializer used to encode rows.</li><li><code>current_start::Int</code>: Current position in the list of items.</li><li><code>items_per_chunk::Int</code>: Number of rows (items) included in a single chunk.</li></ul></div><a class="docs-sourcelink" target="_blank" href="https://github.com/bhftbootcamp/OhMyCH.jl/blob/6b78b87fc3a9682837a37b5947f84508992b493a/src/row_binary.jl#L78-L89">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="OhMyCH.BinaryToRowIter" href="#OhMyCH.BinaryToRowIter"><code>OhMyCH.BinaryToRowIter</code></a> — <span class="docstring-category">Type</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">BinaryToRowIter{F&lt;:RowBinaryResult}</code></pre><p>Iterator for row data in format <code>F</code> (See <a href="#supported_formats">supported formats</a>).</p><p><strong>Fields</strong></p><ul><li><code>row_type::Type</code>: Data type whose fields define row cell types.</li><li><code>binary::F</code>: Binary format containing the serialized data.</li><li><code>column_names::NTuple{N,Symbol}</code>: Column names.</li><li><code>column_types::NTuple{N,Type}</code>: Column types.</li></ul></div><a class="docs-sourcelink" target="_blank" href="https://github.com/bhftbootcamp/OhMyCH.jl/blob/6b78b87fc3a9682837a37b5947f84508992b493a/src/row_binary.jl#L142-L152">source</a></section></article><h2 id="content_encoding"><a class="docs-heading-anchor" href="#content_encoding">Content encoding</a><a id="content_encoding-1"></a><a class="docs-heading-anchor-permalink" href="#content_encoding" title="Permalink"></a></h2><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="OhMyCH.Lz4" href="#OhMyCH.Lz4"><code>OhMyCH.Lz4</code></a> — <span class="docstring-category">Type</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">Lz4 &lt;: Codec</code></pre><p>Represents the LZ4 codec used for compressing and decompressing data.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/bhftbootcamp/OhMyCH.jl/blob/6b78b87fc3a9682837a37b5947f84508992b493a/src/compression.jl#L7-L11">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="OhMyCH.encode" href="#OhMyCH.encode"><code>OhMyCH.encode</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">encode(::Type{Lz4}, x::Vector{UInt8}) -&gt; Vector{UInt8}</code></pre><p>Compresses the data in the byte vector <code>x</code> using the LZ4 codec and returns a vector of the compressed data.</p><p><strong>Examples</strong></p><pre><code class="language-julia-repl hljs">julia&gt; original_data = collect(UInt8, &quot;Hello&quot;) # &quot;Hello&quot; in UInt8 array
+5-element Vector{UInt8}:
+ 0x48
+ 0x65
+ 0x6c
+ 0x6c
+ 0x6f
+
+julia&gt; compressed_data = encode(Lz4, original_data);
+20-element Vector{UInt8}:
+ 0x04
+ 0x22
+    ⋮
+ 0x00
+ 0x00</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/bhftbootcamp/OhMyCH.jl/blob/6b78b87fc3a9682837a37b5947f84508992b493a/src/compression.jl#L45-L69">source</a></section></article><article class="docstring"><header><a class="docstring-article-toggle-button fa-solid fa-chevron-down" href="javascript:;" title="Collapse docstring"></a><a class="docstring-binding" id="OhMyCH.decode" href="#OhMyCH.decode"><code>OhMyCH.decode</code></a> — <span class="docstring-category">Function</span><span class="is-flex-grow-1 docstring-article-toggle-button" title="Collapse docstring"></span></header><section><div><pre><code class="language-julia hljs">decode(::Type{Lz4}, x::Vector{UInt8}) -&gt; Vector{UInt8}</code></pre><p>Decompresses LZ4-compressed data in the byte vector <code>x</code> and returns a vector of the original data.</p><p><strong>Examples</strong></p><pre><code class="language-julia-repl hljs">julia&gt; original_data = collect(UInt8, &quot;Hello&quot;)
+5-element Vector{UInt8}:
+ 0x48
+ 0x65
+ 0x6c
+ 0x6c
+ 0x6f
+
+julia&gt; compressed_data = encode(Lz4, original_data);
+
+julia&gt; decode(Lz4, compressed_data) # &quot;Hello&quot; in UInt8 array
+5-element Vector{UInt8}:
+ 0x48
+ 0x65
+ 0x6c
+ 0x6c
+ 0x6f</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/bhftbootcamp/OhMyCH.jl/blob/6b78b87fc3a9682837a37b5947f84508992b493a/src/compression.jl#L16-L42">source</a></section></article></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../constants/">« Status codes</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.13.0 on <span class="colophon-date" title="Friday 4 July 2025 11:46">Friday 4 July 2025</span>. Using Julia version 1.11.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
