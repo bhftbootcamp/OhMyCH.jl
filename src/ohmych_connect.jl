@@ -130,7 +130,7 @@ function _perform_query(
             accept_encoding = nothing,
         )
     catch e
-        throw(e isa CurlError ? CHClientException(e.message) : e)
+        throw(e isa AbstractCurlError ? CHClientException(e.message) : e)
     end
     encoding = http_header(req, "content-encoding", nothing)
     iscompressed = use_compression && encoding == content_encoding(compression)
