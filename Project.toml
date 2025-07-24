@@ -1,6 +1,6 @@
 name = "OhMyCH"
 uuid = "27ae6650-29b9-4c69-9010-441cd8c8f06e"
-version = "0.1.1"
+version = "0.1.2"
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
