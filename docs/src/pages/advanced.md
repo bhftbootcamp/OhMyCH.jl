@@ -92,7 +92,7 @@ OhMyCH.BinaryToRowIter
 ## [Content encoding](@id content_encoding)
 
 ```@docs
-OhMyCH.Lz4
+OhMyCH.LZ4
 OhMyCH.encode
 OhMyCH.decode
 ```

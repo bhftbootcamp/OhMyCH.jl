@@ -1,5 +1,3 @@
-#__ Serialization
-
 import OhMyCH: Serializer, serialize, deserialize
 
 @testset verbose = true "(De)Serilization" begin

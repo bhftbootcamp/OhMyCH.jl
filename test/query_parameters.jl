@@ -1,5 +1,3 @@
-#__ query_parameters
-
 using OhMyCH: stringify_value, parameters_to_strings
 
 @testset verbose = true "Query parameters" begin
@@ -46,15 +44,15 @@ using OhMyCH: stringify_value, parameters_to_strings
     end
 
     @testset "Case №4: Bools" begin
-        @test stringify_value(true) == "true"
-        @test stringify_value(false) == "false"
+        @test stringify_value(true) == "1"
+        @test stringify_value(false) == "0"
 
         @test parameters_to_strings((
             bool_1 = true,
             bool_2 = false,
         )) == [
-            "param_bool_1" => "true",
-            "param_bool_2" => "false",
+            "param_bool_1" => "1",
+            "param_bool_2" => "0",
         ]
     end
 
@@ -202,7 +200,7 @@ using OhMyCH: stringify_value, parameters_to_strings
     end
 
     @testset "Case №11: Vectors" begin
-        @test stringify_value([true, false]) == "[true,false]"
+        @test stringify_value([true, false]) == "[1,0]"
         @test stringify_value([1, 2, 3]) == "[1,2,3]"
         @test stringify_value([1.0, 2.0, 3.0]) == "[1.0,2.0,3.0]"
         @test stringify_value([nothing, nothing, nothing]) == "[NULL,NULL,NULL]"
@@ -219,7 +217,7 @@ using OhMyCH: stringify_value, parameters_to_strings
             vector_6 = [NaN, Inf, -Inf],
             vector_7 = ["null", nothing, "NULL", "ᴺᵁᴸᴸ"],
         )) == [
-            "param_vector_1" => "[true,false]",
+            "param_vector_1" => "[1,0]",
             "param_vector_2" => "[1,2,3]",
             "param_vector_3" => "[1.0,2.0,3.0]",
             "param_vector_4" => "[NULL,NULL,NULL]",
@@ -230,18 +228,18 @@ using OhMyCH: stringify_value, parameters_to_strings
     end
 
     @testset "Case №12: Tuples" begin
-        @test stringify_value((1, -2, 3.0, true, NaN, Inf)) == "(1,-2,3.0,true,nan,+inf)"
+        @test stringify_value((1, -2, 3.0, true, NaN, Inf)) == "(1,-2,3.0,1,nan,+inf)"
         @test stringify_value((nothing, "abc", missing)) == "(NULL,'abc',NULL)"
-        @test stringify_value((Dict("key" => "value"), 1, false)) == "({'key':'value'},1,false)"
+        @test stringify_value((Dict("key" => "value"), 1, false)) == "({'key':'value'},1,0)"
 
         @test parameters_to_strings((
             tuple_1 = (1, -2, 3.0, true, NaN, Inf),
             tuple_2 = (nothing, "abc", missing),
             tuple_3 = (Dict("key" => "value"), 1, false),
         )) == [
-            "param_tuple_1" => "(1,-2,3.0,true,nan,+inf)",
+            "param_tuple_1" => "(1,-2,3.0,1,nan,+inf)",
             "param_tuple_2" => "(NULL,'abc',NULL)",
-            "param_tuple_3" => "({'key':'value'},1,false)",
+            "param_tuple_3" => "({'key':'value'},1,0)",
         ]
     end
 end

@@ -1,5 +1,3 @@
-#__ FixedStrings
-
 @testset verbose = true "Simple FixedString" begin
     fstr = FixedString{16}("0123456789abcdef")
 
@@ -353,5 +351,5 @@ end
 
 @testset verbose = true "Invalid FixedString" begin
     @test_throws ArgumentError("Input string is longer than 8 bytes (16).") FixedString{8}("0123456789abcdef")
-    @test_throws ArgumentError("FixedString size N must be positive.") FixedString{-1}("123")
+    @test_throws ArgumentError("FixedString size N must be non-negative, got -1.") FixedString{-1}("123")
 end

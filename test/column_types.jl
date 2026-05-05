@@ -1,6 +1,122 @@
-#__ column_types
+import OhMyCH: parse_column_type, parse_ch_type, julia_type,
+    CHType, CHPrimitive, CHDateTime, CHDateTime64, CHFixedString,
+    CHDecimal, CHEnum8, CHEnum16, CHNullable, CHLowCardinality,
+    CHArray, CHTuple, CHMap
 
-import OhMyCH: parse_column_type
+@testset verbose = true "parse_ch_type(...)" begin
+    @testset "Case №1: Primitives" begin
+        t = parse_ch_type("Int32")
+        @test t isa CHPrimitive
+        @test t.name == :Int32
+        @test string(t) == "Int32"
+    end
+
+    @testset "Case №2: DateTime" begin
+        t = parse_ch_type("DateTime")
+        @test t isa CHDateTime
+        @test t.tz === nothing
+        @test string(t) == "DateTime"
+
+        t = parse_ch_type("DateTime('UTC')")
+        @test t isa CHDateTime
+        @test t.tz == "UTC"
+        @test string(t) == "DateTime('UTC')"
+    end
+
+    @testset "Case №3: DateTime64" begin
+        t = parse_ch_type("DateTime64(3)")
+        @test t isa CHDateTime64
+        @test t.precision == 3
+        @test t.tz === nothing
+        @test string(t) == "DateTime64(3)"
+
+        t = parse_ch_type("DateTime64(6, 'Europe/Moscow')")
+        @test t isa CHDateTime64
+        @test t.precision == 6
+        @test t.tz == "Europe/Moscow"
+        @test string(t) == "DateTime64(6, 'Europe/Moscow')"
+    end
+
+    @testset "Case №4: FixedString" begin
+        t = parse_ch_type("FixedString(16)")
+        @test t isa CHFixedString
+        @test t.n == 16
+        @test string(t) == "FixedString(16)"
+    end
+
+    @testset "Case №5: Decimal" begin
+        t = parse_ch_type("Decimal(9, 2)")
+        @test t isa CHDecimal
+        @test t.P == 9
+        @test t.S == 2
+        @test string(t) == "Decimal(9, 2)"
+    end
+
+    @testset "Case №6: Enums" begin
+        t = parse_ch_type("Enum8('a' = 1, 'b' = 2)")
+        @test t isa CHEnum8
+        @test string(t) == "Enum8"
+
+        t = parse_ch_type("Enum16('c' = 3)")
+        @test t isa CHEnum16
+        @test string(t) == "Enum16"
+    end
+
+    @testset "Case №7: Nullable" begin
+        t = parse_ch_type("Nullable(String)")
+        @test t isa CHNullable
+        @test t.inner isa CHPrimitive
+        @test t.inner.name == :String
+        @test string(t) == "Nullable(String)"
+    end
+
+    @testset "Case №8: LowCardinality" begin
+        t = parse_ch_type("LowCardinality(String)")
+        @test t isa CHLowCardinality
+        @test t.inner isa CHPrimitive
+        @test string(t) == "LowCardinality(String)"
+    end
+
+    @testset "Case №9: Array" begin
+        t = parse_ch_type("Array(UInt8)")
+        @test t isa CHArray
+        @test t.inner isa CHPrimitive
+        @test string(t) == "Array(UInt8)"
+    end
+
+    @testset "Case №10: Tuple" begin
+        t = parse_ch_type("Tuple(Int32, String, Float64)")
+        @test t isa CHTuple
+        @test length(t.inner) == 3
+        @test string(t) == "Tuple(Int32, String, Float64)"
+    end
+
+    @testset "Case №11: Map" begin
+        t = parse_ch_type("Map(String, Int64)")
+        @test t isa CHMap
+        @test t.key isa CHPrimitive
+        @test t.val isa CHPrimitive
+        @test string(t) == "Map(String, Int64)"
+    end
+
+    @testset "Case №12: Nested round-trip" begin
+        types = [
+            "Map(String, Array(Nullable(UInt8)))",
+            "Tuple(Date, Map(UInt8, UUID))",
+            "Array(Map(String, Int32))",
+            "Nullable(Decimal(18, 4))",
+            "LowCardinality(Nullable(String))",
+        ]
+        for s in types
+            @test string(parse_ch_type(s)) == s
+        end
+    end
+
+    @testset "Case №13: Errors" begin
+        @test_throws ArgumentError parse_ch_type("")
+        @test_throws ArgumentError parse_ch_type("UnknownType")
+    end
+end
 
 @testset verbose = true "Column types" begin
     @testset "Case №1: Integers" begin

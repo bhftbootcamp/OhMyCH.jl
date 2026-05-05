@@ -1,16 +1,9 @@
-#__ row_binary
-
 """
     RowBinaryResult
 
 Abstract supertype for all row binary data results.
 
-This type is a base for binary data representations, such as `RowBinary`
-and `RowBinaryWithNamesAndTypes`.
-
-## See Also
-- [`RowBinary`](@ref)
-- [`RowBinaryWithNamesAndTypes`](@ref)
+See also [`RowBinary`](@ref), [`RowBinaryWithNamesAndTypes`](@ref).
 """
 abstract type RowBinaryResult end
 
@@ -45,7 +38,12 @@ end
     RowBinaryWithNamesAndTypes <: RowBinaryResult
 
 This format represents binary rows of data containing information about column types and their names.
-Data can be extracted using the [`eachrow`](@ref) or [`collect`](@ref) methods.
+Supports direct iteration (`for row in result`), [`eachrow`](@ref), [`collect`](@ref), and the
+[`Tables.jl`](https://github.com/JuliaTables/Tables.jl) interface (e.g. `DataFrame(result)`).
+
+!!! note
+    Results are streamed from an internal buffer and can only be iterated once.
+    Use [`collect`](@ref) or [`fetch_all`](@ref) to materialize all rows if you need multiple passes.
 
 See more in [`ClickHouse Docs`](https://clickhouse.com/docs/en/sql-reference/formats#rowbinarywithnamesandtypes).
 """
@@ -65,15 +63,14 @@ struct RowBinaryWithNamesAndTypes <: RowBinaryResult
 end
 
 Base.print(io::IO, x::RowBinaryWithNamesAndTypes) = print(io, "RowBinaryWithNamesAndTypes(", x.s.io.size, "-bytes)")
-function Base.show(io::IO, x::OhMyCH.RowBinaryWithNamesAndTypes)
+
+function Base.show(io::IO, x::RowBinaryWithNamesAndTypes)
     println(io, "RowBinaryWithNamesAndTypes(", x.s.io.size, "-bytes):")
     println(io, "Schema:")
     for (name, type) in zip(x.column_names, x.column_types)
         println(io, "  ", name, "::", type)
     end
 end
-
-#__ row_to_binary_iter
 
 """
     RowToBinaryIter{T}
@@ -107,7 +104,11 @@ end
 
 Base.IteratorSize(::Type{<:RowToBinaryIter}) = Base.HasLength()
 Base.eltype(::RowToBinaryIter{T}) where {T} = Vector{UInt8}
-Base.length(iter::RowToBinaryIter{T}) where {T} = ceil(Int, length(iter.items) / iter.items_per_chunk)
+
+function Base.length(iter::RowToBinaryIter{T}) where {T}
+    iter.items_per_chunk == 0 && return 0
+    return ceil(Int, length(iter.items) / iter.items_per_chunk)
+end
 
 function _compute_items_per_chunk(items::AbstractVector, chunk_size::Int)
     len = length(items)
@@ -137,12 +138,10 @@ function Base.iterate(iter::RowToBinaryIter{T}, state) where {T}
     return Base.iterate(iter)
 end
 
-#__ binary_to_row_iter
-
 """
     BinaryToRowIter{F<:RowBinaryResult}
 
-Iterator for row data in format `F` (See [supported formats](@ref supported_formats)).
+Iterator for row data in format `F` (see [`RowBinaryResult`](@ref)).
 
 ## Fields
 - `row_type::Type`: Data type whose fields define row cell types.
@@ -179,6 +178,42 @@ function Base.iterate(iter::BinaryToRowIter{RowBinaryWithNamesAndTypes}, eof_sta
 end
 
 """
+    iterate(result::RowBinaryWithNamesAndTypes)
+
+Enables direct iteration over query results without needing [`eachrow`](@ref).
+
+## Examples
+
+```julia-repl
+julia> result = query(client, "SELECT * FROM employees")
+
+julia> for row in result
+           println(row.name, ": ", row.salary)
+       end
+Alice: 75000.5
+Bob: 92000.75
+```
+"""
+function Base.iterate(b::RowBinaryWithNamesAndTypes)
+    iter = BinaryToRowIter(b)
+    result = iterate(iter)
+    result === nothing && return nothing
+    return (result[1], iter)
+end
+
+function Base.iterate(::RowBinaryWithNamesAndTypes, iter::BinaryToRowIter)
+    result = iterate(iter, eof(iter))
+    result === nothing && return nothing
+    return (result[1], iter)
+end
+
+Base.IteratorSize(::Type{RowBinaryWithNamesAndTypes}) = Base.SizeUnknown()
+
+function Base.eltype(::Type{RowBinaryWithNamesAndTypes})
+    return NamedTuple
+end
+
+"""
     eachrow(binary::RowBinaryWithNamesAndTypes) -> BinaryToRowIter
 
 Creates a new iterator [`BinaryToRowIter`](@ref) that determines column types and their names from `binary` object.
@@ -187,7 +222,7 @@ The elements of such an iterator are `NamedTuple` objects.
 ## Examples
 
 ```julia-repl
-julia> client = ohmych_connect("http://127.0.0.1:8123", "database", "username", "password");
+julia> client = connect("http://127.0.0.1:8123")
 
 julia> employees = query(client, "SELECT * FROM employees");
 
@@ -196,8 +231,6 @@ julia> for user in eachrow(employees)
        end
 (name = "Alice", age = 29, position = "Developer", salary = 75000.5)
 (name = "Bob", age = 35, position = "Manager", salary = 92000.75)
-(name = "Clara", age = 28, position = "Designer", salary = 68000.0)
-(name = "David", age = 40, position = "Developer", salary = 81000.3)
 ```
 """
 Base.eachrow(::RowBinaryWithNamesAndTypes)
@@ -217,12 +250,12 @@ end
 Works similarly to the [`eachrow`](@ref) method, but instead of creating an iterator, it returns all values from the `binary` representation of the data.
 
 !!! warning
-    If you don't need all the values at once, it's preferable to iterate over the rows using the [`eachrow`](@ref) method.
+    If you don't need all the values at once, it's preferable to iterate over the rows using the [`eachrow`](@ref) method or direct iteration (`for row in result`).
 
 ## Examples
 
 ```julia-repl
-julia> client = ohmych_connect("http://127.0.0.1:8123", "database", "username", "password");
+julia> client = connect("http://127.0.0.1:8123")
 
 julia> employees = query(client, "SELECT * FROM employees");
 
@@ -234,9 +267,9 @@ julia> collect(employees)
  (name = "David", age = 40, position = "Developer", salary = 81000.3)
 ```
 """
-Base.collect(::RowBinaryResult)
+Base.collect(::RowBinaryWithNamesAndTypes)
 
-function Base.collect(b::RowBinaryResult)
+function Base.collect(b::RowBinaryWithNamesAndTypes)
     return collect(BinaryToRowIter(b))
 end
 
@@ -247,7 +280,9 @@ end
 function BinaryToRowIter(t::Type, b::F) where {F<:RowBinaryWithNamesAndTypes}
     ft = fieldtypes(t)
     st = Tuple(parse_column_type.(b.column_types))
-    @assert ft == st "Type mismatch for $(string(t)). Expected: $st, Got: $ft. Ensure the structure matches the schema."
+    if ft != st
+        throw(ArgumentError("Type mismatch for $(string(t)). Expected: $st, Got: $ft. Ensure the structure matches the schema."))
+    end
     return BinaryToRowIter{RowBinary}(t, b, fieldnames(t), ft)
 end
 
@@ -266,7 +301,7 @@ The elements of such an iterator are objects of type `T`.
 ## Examples
 
 ```julia-repl
-julia> client = ohmych_connect("http://127.0.0.1:8123", "database", "username", "password");
+julia> client = connect("http://127.0.0.1:8123")
 
 julia> employees = query_binary(client, "SELECT * FROM employees");
 
@@ -282,8 +317,6 @@ julia> for employee in eachrow(Employee, employees)
        end
 Employee("Alice", 29, "Developer", 75000.5)
 Employee("Bob", 35, "Manager", 92000.75)
-Employee("Clara", 28, "Designer", 68000.0)
-Employee("David", 40, "Developer", 81000.3)
 ```
 """
 Base.eachrow(::Type, ::RowBinaryResult)

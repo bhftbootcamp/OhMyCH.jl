@@ -1,5 +1,3 @@
-#__ exceptions
-
 """
     OhMyCHException <: Exception
 
@@ -42,36 +40,36 @@ Represents an error that occurs during HTTP communication with the ClickHouse da
 
 ## Fields
 - `message::String`: A descriptive message providing details about the error.
+- `cause::Union{Exception, Nothing}`: The original exception that caused this error, if any.
 """
 struct CHClientException <: OhMyCHException
     message::String
+    cause::Union{Exception, Nothing}
 
-    function CHClientException(message::String)
-        return new(message)
-    end
+    CHClientException(message::String) = new(message, nothing)
+    CHClientException(message::String, cause::Exception) = new(message, cause)
 end
 
 function Base.show(io::IO, e::CHClientException)
-    return print(io, "CHClientException: $(e.message)")
-end
-
-function check_and_throw_exception(x::AbstractVector{UInt8})
-    if length(x) <= 3
-        nothing
-    elseif x[end-2:end] == b"))\n"
-        parse_and_throw_exception(x)
-    else
-        nothing
+    print(io, "CHClientException: $(e.message)")
+    if e.cause !== nothing
+        print(io, "\n  Caused by: ")
+        show(io, e.cause)
     end
 end
 
+function check_and_throw_exception(x::AbstractVector{UInt8})
+    length(x) > 3 && x[end-2:end] == b"))\n" && parse_and_throw_exception(x)
+    return nothing
+end
+
 function parse_and_throw_exception(chunk::AbstractVector{UInt8})
-    start_index = findlast(b"Code:", chunk)
-    start_index === nothing && return nothing
-    error_message = String(chunk[start_index[1]:end-1])
-    !occursin("DB::Exception:", error_message) && return nothing
-    code_chunk = chunk[start_index[end]+1:end]
-    end_index = findfirst(b".", code_chunk)
-    error_code = parse(Int, String(code_chunk[1:end_index[1]-1]))
-    throw(CHServerException(error_code, error_message))
+    p = findlast(b"Code:", chunk)
+    p === nothing && return nothing
+    msg = String(chunk[p[1]:end-1])
+    !occursin("DB::Exception:", msg) && return nothing
+    rest = chunk[p[end]+1:end]
+    q = findfirst(b".", rest)
+    q === nothing && return nothing
+    throw(CHServerException(parse(Int, String(rest[1:q[1]-1])), msg))
 end

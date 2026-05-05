@@ -1,21 +1,45 @@
 # API Reference
 
+## Connection
+
 ```@docs
-OhMyCH.HttpConfig
-OhMyCH.HttpClient
-ohmych_connect
+CHConfig
+CHClient
+connect
 isopen
 close
+ping
+server_version
 ```
 
-## Database requests
+## Queries
 
 ```@docs
 execute
-insert
 query
-insert_binary
 query_binary
+fetch_all
+fetch_one
+fetch_optional
+```
+
+## Insert
+
+```@docs
+insert
+insert_binary
+```
+
+## Inserter
+
+```@docs
+InsertStats
+Inserter
+Inserter(::CHClient, ::AbstractString)
+write(::Inserter, ::Any)
+commit!
+flush!
+inserter
 ```
 
 ## Row iteration
@@ -25,14 +49,21 @@ eachrow
 collect
 ```
 
-## [Column types](@id column_types)
+## Compression
 
-Most of the ClickHouse column types are the same as the Julia base types.
+```@docs
+Codec
+LZ4
+NoCompression
+```
+
+## [Column types](@id column_types)
 
 | ClickHouse Type      | Julia Type            |
 |----------------------|-----------------------|
 | Bool                 | Bool                  |
-| Int8-128, UInt8-128  | Int8-128, UInt8-128   |
+| Int8 – Int128        | Int8 – Int128         |
+| UInt8 – UInt128      | UInt8 – UInt128       |
 | Float32, Float64     | Float32, Float64      |
 | Decimal(P,S)         | Decimal{P,S}          |
 | String               | String                |
@@ -43,13 +74,11 @@ Most of the ClickHouse column types are the same as the Julia base types.
 | Enum8, Enum16        | UInt8, UInt16         |
 | UUID                 | UUID                  |
 | IPv4, IPv6           | IPv4, IPv6            |
-| Array(T)             | AbstractVector{T}     |
-| Tuple(T1, T2, ...)   | Tuple                 |
-| Map(K, V)            | AbstractDict{K,V}     |
+| Array(T)             | Vector{T}             |
+| Tuple(T1, T2, ...)   | Tuple{T1, T2, ...}    |
+| Map(K, V)            | Dict{K, V}            |
+| Nullable(T)          | Union{Nothing, T}     |
 | LowCardinality(T)    | T                     |
-| Nullable(T)          | Union{Nothing,T}      |
-
-However, some types had to be implemented independently.
 
 ### Decimal
 
