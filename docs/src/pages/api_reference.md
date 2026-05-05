@@ -35,8 +35,6 @@ insert_binary
 ```@docs
 InsertStats
 Inserter
-Inserter(::CHClient, ::AbstractString)
-write(::Inserter, ::Any)
 commit!
 flush!
 inserter
@@ -83,16 +81,14 @@ NoCompression
 ### Decimal
 
 ```@docs
+AbstractDecimal
 Decimal
-Decimal(::Union{Real,AbstractString,OhMyCH.DecimalFP})
-Decimal(::Integer, ::Integer, ::Integer)
 ```
 
 ### FixedString
 
 ```@docs
 FixedString
-FixedString(::AbstractString)
 ```
 
 ## Exceptions

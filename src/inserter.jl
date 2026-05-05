@@ -27,8 +27,8 @@ Buffered inserter for streaming inserts with auto-commit thresholds.
 Rows are accumulated in an internal buffer and flushed to ClickHouse when
 any of the configured thresholds (max_rows, max_bytes, period) is reached.
 
-Use [`write`](@ref) to add rows, [`commit!`](@ref) to conditionally flush,
-[`flush!`](@ref) to force flush, and [`close`](@ref) to finalize.
+Use `write` to add rows, [`commit!`](@ref) to conditionally flush,
+[`flush!`](@ref) to force flush, and `close` to finalize.
 
 ## Examples
 
