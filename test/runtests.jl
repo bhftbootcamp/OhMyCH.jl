@@ -1,6 +1,7 @@
 using Test
 using OhMyCH
-using Dates, NanoDates, UUIDs, Sockets
+using Dates, NanoDates, UUIDs
+import Sockets: IPv4, IPv6
 using Tables
 
 import OhMyCH: Serializer, serialize, write_leb128, parse_column_type
@@ -275,4 +276,9 @@ end
         @test rows[1] == SimpleRecord(100, "test")
         @test rows[2] == SimpleRecord(200, "hello")
     end
+end
+
+# Integration tests — run only when ClickHouse is available
+if haskey(ENV, "CLICKHOUSE_URL") || isfile("/tmp/.ohmych_integration")
+    include("integration.jl")
 end

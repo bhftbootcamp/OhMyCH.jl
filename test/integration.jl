@@ -1,8 +1,3 @@
-using Test
-using Dates, NanoDates, UUIDs
-import Sockets: IPv4, IPv6
-using OhMyCH
-
 const CH_URL = get(ENV, "CLICKHOUSE_URL", "http://127.0.0.1:18123")
 
 @testset "Integration tests" begin
