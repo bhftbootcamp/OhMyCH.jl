@@ -62,10 +62,16 @@ execute(client, """
 ### Insert
 
 ```julia
+struct Employee
+    name::String
+    age::Int32
+    salary::Float64
+end
+
 insert(client, "employees", [
-    (name = "Alice",   age = Int32(29), salary = 75000.5),
-    (name = "Bob",     age = Int32(35), salary = 92000.0),
-    (name = "Charlie", age = Int32(42), salary = 110000.0),
+    Employee("Alice",   Int32(29), 75000.5),
+    Employee("Bob",     Int32(35), 92000.0),
+    Employee("Charlie", Int32(42), 110000.0),
 ])
 ```
 
@@ -82,26 +88,14 @@ end
 ### Fetch helpers
 
 ```julia
-# All rows as Vector{NamedTuple}
-all = fetch_all(client, "SELECT * FROM employees")
+# All rows as Vector{Employee}
+employees = fetch_all(client, "SELECT * FROM employees", Employee)
 
 # Single row (throws if 0 rows)
-top = fetch_one(client, "SELECT * FROM employees ORDER BY salary DESC LIMIT 1")
+top = fetch_one(client, "SELECT * FROM employees ORDER BY salary DESC LIMIT 1", Employee)
 
 # Optional row (returns nothing if 0 rows)
-row = fetch_optional(client, "SELECT * FROM employees WHERE name = {n:String}", (n = "Unknown",))
-```
-
-### Typed deserialization
-
-```julia
-struct Employee
-    name::String
-    age::Int32
-    salary::Float64
-end
-
-employees = fetch_all(client, "SELECT * FROM employees", Employee)
+row = fetch_optional(client, "SELECT * FROM employees WHERE name = {n:String}", Employee, (n = "Unknown",))
 ```
 
 ### Inserter
@@ -109,12 +103,9 @@ employees = fetch_all(client, "SELECT * FROM employees", Employee)
 Streaming insert with automatic flushing by row count, byte size, or time period:
 
 ```julia
-inserter(client, "employees", NamedTuple{(:name, :age, :salary), Tuple{String, Int32, Float64}};
-    max_rows = 1000,
-    period   = 5.0,
-) do ins
+inserter(client, "employees", Employee; max_rows = 1000, period = 5.0) do ins
     for i in 1:10_000
-        write(ins, (name = "user_$i", age = Int32(i % 50), salary = Float64(50000 + i)))
+        write(ins, Employee("user_$i", Int32(i % 50), Float64(50000 + i)))
         commit!(ins)  # flushes only when a threshold is reached
     end
 end

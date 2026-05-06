@@ -33,11 +33,16 @@ Use `write` to add rows, [`commit!`](@ref) to conditionally flush,
 ## Examples
 
 ```julia-repl
+julia> struct Event
+           ts::Int64
+           value::Float64
+       end
+
 julia> client = connect("http://127.0.0.1:8123")
 
-julia> inserter(client, "events", NamedTuple{(:ts, :value), Tuple{Int64, Float64}}; max_rows=1000) do ins
+julia> inserter(client, "events", Event; max_rows=1000) do ins
            for i in 1:5000
-               write(ins, (ts = Int64(i), value = Float64(i) * 0.1))
+               write(ins, Event(Int64(i), Float64(i) * 0.1))
                commit!(ins)
            end
        end
@@ -181,11 +186,16 @@ Returns cumulative [`InsertStats`](@ref).
 ## Examples
 
 ```julia-repl
+julia> struct Event
+           id::Int64
+           value::Float64
+       end
+
 julia> client = connect("http://127.0.0.1:8123")
 
-julia> inserter(client, "events", NamedTuple{(:id, :value), Tuple{Int64, Float64}}; max_rows=500) do ins
+julia> inserter(client, "events", Event; max_rows=500) do ins
            for i in 1:1000
-               write(ins, (id = Int64(i), value = Float64(i)))
+               write(ins, Event(Int64(i), Float64(i)))
                commit!(ins)
            end
        end

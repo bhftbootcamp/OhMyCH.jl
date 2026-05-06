@@ -18,11 +18,20 @@ execute(client, """
     ORDER BY name
 """)
 
+# Define row type
+struct Employee
+    name::String
+    age::Int32
+    position::String
+    salary::Float64
+    hired::Date
+end
+
 # Insert data
 insert(client, "employees", [
-    (name = "Alice",   age = Int32(29), position = "Developer", salary = 75000.5,  hired = Date(2021, 3, 15)),
-    (name = "Bob",     age = Int32(35), position = "Manager",   salary = 92000.75, hired = Date(2019, 7, 1)),
-    (name = "Charlie", age = Int32(42), position = "Architect", salary = 110000.0, hired = Date(2018, 1, 10)),
+    Employee("Alice",   Int32(29), "Developer", 75000.5,  Date(2021, 3, 15)),
+    Employee("Bob",     Int32(35), "Manager",   92000.75, Date(2019, 7, 1)),
+    Employee("Charlie", Int32(42), "Architect", 110000.0, Date(2018, 1, 10)),
 ])
 
 # Query all rows
@@ -33,14 +42,6 @@ for row in result
 end
 
 # Fetch with typed deserialization
-struct Employee
-    name::String
-    age::Int32
-    position::String
-    salary::Float64
-    hired::Date
-end
-
 employees = fetch_all(client, "SELECT * FROM employees", Employee)
 
 # Fetch single row

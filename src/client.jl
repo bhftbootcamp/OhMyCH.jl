@@ -333,12 +333,18 @@ The `table` argument can be a simple table name (e.g. `"my_table"`) or a full `I
 ## Examples
 
 ```julia-repl
+julia> struct Employee
+           name::String
+           age::Int32
+           salary::Float64
+       end
+
 julia> client = connect("http://127.0.0.1:8123")
 
 julia> insert(client, "employees", [
-    (name = "Alice", age = Int32(29), position = "Developer", salary = 75000.5),
-    (name = "Bob", age = Int32(35), position = "Manager", salary = 92000.75),
-])
+           Employee("Alice", Int32(29), 75000.5),
+           Employee("Bob",   Int32(35), 92000.0),
+       ])
 ```
 """
 function insert(
@@ -517,9 +523,10 @@ With a type `T`, rows are deserialized into objects of type `T`.
 ```julia-repl
 julia> client = connect("http://127.0.0.1:8123")
 
-julia> fetch_all(client, "SELECT * FROM employees")
-4-element Vector{NamedTuple{...}}:
- (name = "Alice", age = 29, ...)
+julia> fetch_all(client, "SELECT * FROM employees", Employee)
+3-element Vector{Employee}:
+ Employee("Alice", 29, 75000.5)
+ Employee("Bob", 35, 92000.0)
  ...
 ```
 """
@@ -543,8 +550,8 @@ Throws an `ArgumentError` if the query returns 0 rows.
 ```julia-repl
 julia> client = connect("http://127.0.0.1:8123")
 
-julia> fetch_one(client, "SELECT count() as cnt FROM employees")
-(cnt = 4,)
+julia> fetch_one(client, "SELECT * FROM employees ORDER BY salary DESC LIMIT 1", Employee)
+Employee("Charlie", 42, 110000.0)
 ```
 """
 function fetch_one(client::CHClient, sql::AbstractString, params::NamedTuple = NamedTuple(); kw...)

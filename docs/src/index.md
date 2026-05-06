@@ -28,10 +28,16 @@ connect("http://127.0.0.1:8123") do client
         ) ENGINE = MergeTree() ORDER BY name
     """)
 
+    struct Employee
+        name::String
+        age::Int32
+        salary::Float64
+    end
+
     insert(client, "employees", [
-        (name = "Alice",   age = Int32(29), salary = 75000.5),
-        (name = "Bob",     age = Int32(35), salary = 92000.0),
-        (name = "Charlie", age = Int32(42), salary = 110000.0),
+        Employee("Alice",   Int32(29), 75000.5),
+        Employee("Bob",     Int32(35), 92000.0),
+        Employee("Charlie", Int32(42), 110000.0),
     ])
 
     for row in query(client, "SELECT * FROM employees")
