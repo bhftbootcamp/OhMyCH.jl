@@ -35,6 +35,8 @@ jobs:
         image: clickhouse/clickhouse-server:latest
         ports:
           - 18123:8123
+        env:
+          CLICKHOUSE_PASSWORD: test
         options: >-
           --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"
           --health-interval 10s
@@ -42,6 +44,7 @@ jobs:
           --health-retries 5
     env:
       CLICKHOUSE_URL: "http://localhost:18123"
+      CLICKHOUSE_PASSWORD: test
     steps:
       - uses: actions/checkout@v5
       - uses: julia-actions/add-julia-registry@v2

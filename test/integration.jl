@@ -1,9 +1,10 @@
 const CH_URL = get(ENV, "CLICKHOUSE_URL", "http://127.0.0.1:18123")
+const CH_PASSWORD = get(ENV, "CLICKHOUSE_PASSWORD", "")
 
 @testset "Integration tests" begin
 
     @testset "connect / ping / server_version / close" begin
-        client = connect(CH_URL)
+        client = connect(CH_URL; password = CH_PASSWORD)
         @test isopen(client)
         @test ping(client)
         v = server_version(client)
@@ -13,7 +14,7 @@ const CH_URL = get(ENV, "CLICKHOUSE_URL", "http://127.0.0.1:18123")
     end
 
     @testset "connect do-block" begin
-        result = connect(CH_URL) do c
+        result = connect(CH_URL; password = CH_PASSWORD) do c
             @test isopen(c)
             ping(c)
         end
@@ -21,7 +22,7 @@ const CH_URL = get(ENV, "CLICKHOUSE_URL", "http://127.0.0.1:18123")
     end
 
     @testset "execute / insert / query / fetch" begin
-        client = connect(CH_URL)
+        client = connect(CH_URL; password = CH_PASSWORD)
 
         execute(client, "DROP TABLE IF EXISTS _ohmych_test")
         execute(client, """
@@ -62,7 +63,7 @@ const CH_URL = get(ENV, "CLICKHOUSE_URL", "http://127.0.0.1:18123")
     end
 
     @testset "Typed deserialization" begin
-        client = connect(CH_URL)
+        client = connect(CH_URL; password = CH_PASSWORD)
 
         execute(client, "DROP TABLE IF EXISTS _ohmych_typed")
         execute(client, """
@@ -92,7 +93,7 @@ const CH_URL = get(ENV, "CLICKHOUSE_URL", "http://127.0.0.1:18123")
     end
 
     @testset "Parameterized queries" begin
-        client = connect(CH_URL)
+        client = connect(CH_URL; password = CH_PASSWORD)
 
         execute(client, "DROP TABLE IF EXISTS _ohmych_params")
         execute(client, """
@@ -118,7 +119,7 @@ const CH_URL = get(ENV, "CLICKHOUSE_URL", "http://127.0.0.1:18123")
     end
 
     @testset "All ClickHouse types" begin
-        client = connect(CH_URL)
+        client = connect(CH_URL; password = CH_PASSWORD)
 
         execute(client, "DROP TABLE IF EXISTS _ohmych_types")
         execute(client, """
@@ -214,7 +215,7 @@ const CH_URL = get(ENV, "CLICKHOUSE_URL", "http://127.0.0.1:18123")
     end
 
     @testset "query_binary / insert_binary round-trip" begin
-        client = connect(CH_URL)
+        client = connect(CH_URL; password = CH_PASSWORD)
 
         execute(client, "DROP TABLE IF EXISTS _ohmych_rb_src")
         execute(client, "DROP TABLE IF EXISTS _ohmych_rb_dst")
@@ -252,8 +253,8 @@ const CH_URL = get(ENV, "CLICKHOUSE_URL", "http://127.0.0.1:18123")
     end
 
     @testset "Compression: LZ4 vs NoCompression" begin
-        client_lz4 = connect(CH_URL; compression = :lz4)
-        client_none = connect(CH_URL; compression = :none)
+        client_lz4 = connect(CH_URL; password = CH_PASSWORD, compression = :lz4)
+        client_none = connect(CH_URL; password = CH_PASSWORD, compression = :none)
 
         execute(client_lz4, "DROP TABLE IF EXISTS _ohmych_compress")
         execute(client_lz4, "CREATE TABLE _ohmych_compress (id UInt32, data String) ENGINE = MergeTree() ORDER BY id")
@@ -274,7 +275,7 @@ const CH_URL = get(ENV, "CLICKHOUSE_URL", "http://127.0.0.1:18123")
     end
 
     @testset "Inserter" begin
-        client = connect(CH_URL)
+        client = connect(CH_URL; password = CH_PASSWORD)
 
         execute(client, "DROP TABLE IF EXISTS _ohmych_inserter")
         execute(client, "CREATE TABLE _ohmych_inserter (id UInt32, val String) ENGINE = MergeTree() ORDER BY id")
@@ -301,7 +302,7 @@ const CH_URL = get(ENV, "CLICKHOUSE_URL", "http://127.0.0.1:18123")
     @testset "Tables.jl integration" begin
         using Tables
 
-        client = connect(CH_URL)
+        client = connect(CH_URL; password = CH_PASSWORD)
 
         execute(client, "DROP TABLE IF EXISTS _ohmych_tables")
         execute(client, "CREATE TABLE _ohmych_tables (a Int32, b String) ENGINE = MergeTree() ORDER BY a")
@@ -327,7 +328,7 @@ const CH_URL = get(ENV, "CLICKHOUSE_URL", "http://127.0.0.1:18123")
     end
 
     @testset "Large insert with chunking" begin
-        client = connect(CH_URL)
+        client = connect(CH_URL; password = CH_PASSWORD)
 
         execute(client, "DROP TABLE IF EXISTS _ohmych_large")
         execute(client, "CREATE TABLE _ohmych_large (id UInt64, payload String) ENGINE = MergeTree() ORDER BY id")
@@ -343,7 +344,7 @@ const CH_URL = get(ENV, "CLICKHOUSE_URL", "http://127.0.0.1:18123")
     end
 
     @testset "Error handling" begin
-        client = connect(CH_URL)
+        client = connect(CH_URL; password = CH_PASSWORD)
 
         @test_throws CHServerException execute(client, "SELECT * FROM _nonexistent_table_12345")
         @test_throws CHServerException execute(client, "INVALID SQL SYNTAX HERE")
