@@ -68,25 +68,26 @@ OhMyCH.serialize
 OhMyCH.deserialize
 ```
 
-## [Binary formats](@id supported_formats)
-
-```@docs
-OhMyCH.RowBinaryResult
-OhMyCH.RowBinary
-OhMyCH.RowBinaryWithNamesAndTypes
-```
-
-## Column types
-
-```@docs
-OhMyCH.parse_column_type
-```
-
 ## Binary iterators
 
 ```@docs
 OhMyCH.RowToBinaryIter
 OhMyCH.BinaryToRowIter
+Base.iterate(::OhMyCH.RowBinaryWithNamesAndTypes)
+```
+
+## Column type parsing internals
+
+```@docs
+OhMyCH.CHType
+OhMyCH.parse_ch_type
+OhMyCH.julia_type
+```
+
+## Query parameter formatting
+
+```@docs
+OhMyCH.parameters_to_strings
 ```
 
 ## [Content encoding](@id content_encoding)
@@ -94,4 +95,11 @@ OhMyCH.BinaryToRowIter
 ```@docs
 OhMyCH.encode
 OhMyCH.decode
+OhMyCH.resolve_codec
+```
+
+## Deprecated
+
+```@docs
+OhMyCH.ohmych_connect
 ```

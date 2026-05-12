@@ -11,17 +11,24 @@ abstract type OhMyCHException <: Exception end
 Raised when the ClickHouse server returns an error response while processing a query.
 
 ## Fields
-- `code::ErrorCodes`: An error code indicating the type of database error.
+- `code::Union{ErrorCodes, Int}`: Error code. Returned as an [`ErrorCodes`](@ref) enum value
+  for codes known to this client, or as a raw `Int` for codes added by ClickHouse after this
+  client was released.
 - `message::String`: A descriptive message providing details about the error.
 
 See also [`ErrorCodes`](@ref).
 """
 struct CHServerException <: OhMyCHException
-    code::ErrorCodes
+    code::Union{ErrorCodes, Int}
     message::String
 
     function CHServerException(code::Int, message::String)
-        return new(ErrorCodes(code), message)
+        ec = try
+            ErrorCodes(code)
+        catch
+            code
+        end
+        return new(ec, message)
     end
 
     function CHServerException(code::String, message::Vector{UInt8})

@@ -19,6 +19,12 @@ Then install the package:
 ```julia
 using OhMyCH
 
+struct Employee
+    name::String
+    age::Int32
+    salary::Float64
+end
+
 connect("http://127.0.0.1:8123") do client
     execute(client, """
         CREATE TABLE IF NOT EXISTS employees (
@@ -27,12 +33,6 @@ connect("http://127.0.0.1:8123") do client
             salary Float64
         ) ENGINE = MergeTree() ORDER BY name
     """)
-
-    struct Employee
-        name::String
-        age::Int32
-        salary::Float64
-    end
 
     insert(client, "employees", [
         Employee("Alice",   Int32(29), 75000.5),
