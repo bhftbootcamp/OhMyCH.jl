@@ -277,8 +277,8 @@ function _perform_query(
                 headers = headers,
                 query = params,
                 body = compress ? encode(codec, body) : body,
-                connect_timeout = connect_timeout,
-                read_timeout = read_timeout,
+                connect_timeout = ceil(Int, connect_timeout),
+                read_timeout = ceil(Int, read_timeout),
                 retry = retry,
                 retry_delay = retry_delay,
                 ssl_verifyhost = client.config.verify_ssl,
@@ -288,7 +288,18 @@ function _perform_query(
             )
         end
     catch e
-        throw(e isa AbstractCurlError ? CHClientException(e.message, e) : e)
+        if e isa AbstractCurlError
+            msg = try
+                e.message
+            catch
+                "libcurl error (code $(isdefined(e, :code) ? e.code : -1))"
+            end
+            throw(CHClientException(msg, e))
+        elseif e isa OhMyCHException
+            rethrow()
+        else
+            throw(CHClientException(sprint(showerror, e), e))
+        end
     end
     encoding = http_header(req, "content-encoding", nothing)
     compressed = compress && encoding == enc
