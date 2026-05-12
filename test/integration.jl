@@ -759,22 +759,6 @@ end
         @test !occursin("***", s2)
     end
 
-    @testset "ohmych_connect: deprecation warning + kwargs flow through" begin
-        c = @test_logs (:warn, r"ohmych_connect.*deprecated") match_mode = :any begin
-            OhMyCH.ohmych_connect(CH_URL, "default", "default", CH_PASSWORD;
-                compression = :none, read_timeout = 42.0, retry = 2)
-        end
-        try
-            @test c isa CHClient
-            @test c.config.compression === :none
-            @test c.config.read_timeout == 42.0
-            @test c.config.retry == 2
-            @test ping(c)
-        finally
-            close(c)
-        end
-    end
-
     @testset "CHClient is safe to share between concurrent tasks" begin
         _with_client() do client
             n = 30

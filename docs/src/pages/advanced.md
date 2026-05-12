@@ -97,9 +97,3 @@ OhMyCH.encode
 OhMyCH.decode
 OhMyCH.resolve_codec
 ```
-
-## Deprecated
-
-```@docs
-OhMyCH.ohmych_connect
-```

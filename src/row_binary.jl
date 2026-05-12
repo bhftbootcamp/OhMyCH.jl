@@ -134,7 +134,7 @@ function Base.iterate(iter::RowToBinaryIter{T}) where {T}
     return chunk, iter
 end
 
-function Base.iterate(iter::RowToBinaryIter{T}, state) where {T}
+function Base.iterate(iter::RowToBinaryIter, state)
     return Base.iterate(iter)
 end
 

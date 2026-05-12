@@ -197,33 +197,6 @@ function connect(f::Function, x...; kw...)
     end
 end
 
-"""
-!!! warning "Deprecated"
-    `ohmych_connect` is deprecated, use [`connect`](@ref) instead.
-"""
-function ohmych_connect(
-    url::String,
-    database::String,
-    user::String,
-    password::String;
-    kw...,
-)
-    Base.depwarn("`ohmych_connect` is deprecated, use `connect` instead", :ohmych_connect; force=true)
-    return connect(url; database, user, password, kw...)
-end
-
-function ohmych_connect(
-    f::Function,
-    url::String,
-    database::String,
-    user::String,
-    password::String;
-    kw...,
-)
-    Base.depwarn("`ohmych_connect` is deprecated, use `connect` instead", :ohmych_connect; force=true)
-    return connect(f, url; database, user, password, kw...)
-end
-
 const _RESERVED_QUERY_KEYS = ("query", "enable_http_compression")
 
 function _build_query_params(sql::String, parameters::NamedTuple, options)

@@ -40,9 +40,6 @@ export FixedString,
     AbstractDecimal,
     Decimal
 
-# Deprecated
-export ohmych_connect
-
 using CodecLz4
 using Dates
 using DecFP
