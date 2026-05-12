@@ -77,6 +77,20 @@ _to_seconds(::Nothing) = 0.0
 _to_seconds(period::Real) = Float64(period)
 _to_seconds(period::Dates.TimePeriod) = Dates.value(Dates.Millisecond(period)) / 1000.0
 
+function _make_timer_callback(wref::WeakRef)
+    return function (t)
+        strong = wref.value
+        if strong === nothing
+            try
+                Base.close(t)
+            catch
+            end
+            return
+        end
+        _timer_tick(strong::Inserter)
+    end
+end
+
 """
     Inserter{T}(client::CHClient, table::AbstractString; max_rows, max_bytes, period, kw...)
 
@@ -117,18 +131,7 @@ function Inserter{T}(
         nothing,
     )
     if period_s > 0
-        wref = WeakRef(ins)
-        ins.timer = Timer(period_s; interval = period_s) do t
-            strong = wref.value
-            if strong === nothing
-                try
-                    Base.close(t)
-                catch
-                end
-                return
-            end
-            _timer_tick(strong::Inserter)
-        end
+        ins.timer = Timer(_make_timer_callback(WeakRef(ins)), period_s; interval = period_s)
     end
     finalizer(_finalize, ins)
     return ins
