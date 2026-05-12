@@ -16,7 +16,8 @@ struct FixedString{N} <: AbstractString
     string::String
 
     function FixedString{N}(x::AbstractString) where {N}
-        N < 0 && throw(ArgumentError("FixedString size N must be non-negative, got $N."))
+        N isa Integer || throw(ArgumentError("FixedString size N must be an integer, got $(typeof(N))."))
+        N >= 1 || throw(ArgumentError("FixedString size N must be positive, got $N."))
         n = ncodeunits(x)
         n > N && throw(ArgumentError("Input string is longer than $N bytes ($n)."))
         return new(x)

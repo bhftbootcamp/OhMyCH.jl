@@ -22,8 +22,10 @@ makedocs(;
     warnonly = [:doctest, :missing_docs],
 )
 
-deploydocs(;
-    repo = "github.com/bhftbootcamp/OhMyCH.jl",
-    devbranch = "master",
-    push_preview = true,
-)
+if get(ENV, "GITHUB_ACTIONS", "") == "true"
+    deploydocs(;
+        repo = "github.com/bhftbootcamp/OhMyCH.jl",
+        devbranch = "master",
+        push_preview = true,
+    )
+end

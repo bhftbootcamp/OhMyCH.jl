@@ -6,8 +6,8 @@
 CHConfig
 CHClient
 connect
-isopen
-close
+Base.isopen(::OhMyCH.CHClient)
+Base.close(::OhMyCH.CHClient)
 ping
 server_version
 ```
@@ -35,16 +35,28 @@ insert_binary
 ```@docs
 InsertStats
 Inserter
+Base.write(::OhMyCH.Inserter{T}, ::Any) where {T}
 commit!
 flush!
+Base.close(::OhMyCH.Inserter)
 inserter
+```
+
+## Binary formats
+
+```@docs
+RowBinaryResult
+RowBinary
+RowBinaryWithNamesAndTypes
+parse_column_type
 ```
 
 ## Row iteration
 
 ```@docs
-eachrow
-collect
+Base.eachrow(::OhMyCH.RowBinaryWithNamesAndTypes)
+Base.eachrow(::Type, ::OhMyCH.RowBinaryResult)
+Base.collect(::OhMyCH.RowBinaryWithNamesAndTypes)
 ```
 
 ## Compression
@@ -94,7 +106,7 @@ FixedString
 ## Exceptions
 
 ```@docs
-OhMyCH.OhMyCHException
+OhMyCHException
 CHServerException
 CHClientException
 ```

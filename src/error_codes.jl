@@ -583,3 +583,9 @@ See [ErrorCodes.cpp](https://github.com/ClickHouse/ClickHouse/blob/master/src/Co
     STD_EXCEPTION = 1001
     UNKNOWN_EXCEPTION = 1002
 end
+
+Base.:(==)(e::ErrorCodes, i::Integer) = Int(e) == i
+Base.:(==)(i::Integer, e::ErrorCodes) = i == Int(e)
+Base.isequal(e::ErrorCodes, i::Integer) = isequal(Int(e), i)
+Base.isequal(i::Integer, e::ErrorCodes) = isequal(i, Int(e))
+Base.hash(e::ErrorCodes, h::UInt) = hash(Int(e), h)

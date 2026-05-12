@@ -29,22 +29,36 @@ struct CHConfig
     verify_ssl::Bool
 end
 
+function Base.show(io::IO, c::CHConfig)
+    redacted = isempty(c.password) ? "" : "***"
+    print(io, "CHConfig(url=$(repr(c.url)), database=$(repr(c.database)), ",
+              "user=$(repr(c.user)), password=$(repr(redacted)), ",
+              "compression=$(repr(c.compression)), connect_timeout=$(c.connect_timeout), ",
+              "read_timeout=$(c.read_timeout), retry=$(c.retry), ",
+              "retry_delay=$(c.retry_delay), verify_ssl=$(c.verify_ssl))")
+end
+
 """
     CHClient
 
 Defines a client to connect to the ClickHouse database.
 Reuses the underlying TCP connection across requests via the persistent `CurlClient` handle.
 
+A `CHClient` is safe to share between Julia tasks: HTTP operations are serialized through
+an internal `ReentrantLock` because the wrapped libcurl handle is not concurrency-safe.
+
 ## Fields
 - `config::CHConfig`: Connection configuration, including URL, database name, and credentials.
 - `curl_client::CurlClient`: Handles HTTP communication with the database server.
+- `lock::ReentrantLock`: Serializes access to `curl_client`.
 """
 mutable struct CHClient
     config::CHConfig
     curl_client::CurlClient
+    lock::ReentrantLock
 
     function CHClient(config::CHConfig, curl_client::CurlClient)
-        c = new(config, curl_client)
+        c = new(config, curl_client, ReentrantLock())
         finalizer(close, c)
         return c
     end
@@ -116,11 +130,12 @@ end
 """
     connect(url::String; database, user, password, compression, connect_timeout, read_timeout, retry, retry_delay, verify_ssl) -> CHClient
     connect(config::CHConfig) -> CHClient
-    connect(f::Function, args...; kw...) -> CHClient
+    connect(f::Function, args...; kw...)
 
 Creates a [`CHClient`](@ref) instance to connect to a ClickHouse database.
 Once the connection is no longer needed, it must be closed using the [`close`](@ref) method.
-The method that takes a function `f` as the first argument will close the connection automatically.
+The method that takes a function `f` as the first argument will close the connection
+automatically when `f` returns or throws, and returns `f`'s return value.
 
 The client reuses the underlying TCP connection across requests (HTTP keep-alive).
 
@@ -182,26 +197,22 @@ function connect(f::Function, x...; kw...)
     end
 end
 
-"""
-    ohmych_connect(url, database, user, password; verify_ssl) -> CHClient
+const _RESERVED_QUERY_KEYS = ("query", "enable_http_compression")
 
-!!! warning "Deprecated"
-    `ohmych_connect` is deprecated, use [`connect`](@ref) instead.
-"""
-function ohmych_connect(
-    url::String,
-    database::String,
-    user::String,
-    password::String;
-    verify_ssl::Bool = true,
-)
-    Base.depwarn("`ohmych_connect` is deprecated, use `connect` instead", :ohmych_connect)
-    return connect(url; database, user, password, verify_ssl)
-end
-
-function ohmych_connect(f::Function, x...; kw...)
-    Base.depwarn("`ohmych_connect` is deprecated, use `connect` instead", :ohmych_connect)
-    return connect(f, x...; kw...)
+function _build_query_params(sql::String, parameters::NamedTuple, options)
+    params = Dict{String,Any}()
+    for (k, v) in options
+        key = string(k)
+        if key in _RESERVED_QUERY_KEYS || startswith(key, "param_")
+            throw(ArgumentError("option `$key` is reserved by OhMyCH and cannot be passed through `options...`"))
+        end
+        params[key] = v
+    end
+    for (k, v) in parameters_to_strings(parameters)
+        params[k] = v
+    end
+    params["query"] = sql
+    return params
 end
 
 function _perform_query(
@@ -228,37 +239,46 @@ function _perform_query(
         push!(headers, "accept-encoding"  => enc)
         push!(headers, "content-encoding" => enc)
     end
-    params = Dict{String,Any}(
-        "query" => sql,
-        "enable_http_compression" => compress ? "1" : "0",
-        parameters_to_strings(parameters)...,
-        (string(k) => v for (k, v) in options)...,
-    )
+    params = _build_query_params(sql, parameters, options)
+    params["enable_http_compression"] = compress ? "1" : "0"
     req = try
-        http_request(
-            client.curl_client,
-            "POST",
-            client.config.url,
-            headers = headers,
-            query = params,
-            body = compress ? encode(codec, body) : body,
-            connect_timeout = ceil(Int, connect_timeout),
-            read_timeout = ceil(Int, read_timeout),
-            retry = retry,
-            retry_delay = retry_delay,
-            ssl_verifyhost = client.config.verify_ssl,
-            ssl_verifypeer = client.config.verify_ssl,
-            status_exception = false,
-            accept_encoding = nothing,
-        )
+        lock(client.lock) do
+            http_request(
+                client.curl_client,
+                "POST",
+                client.config.url,
+                headers = headers,
+                query = params,
+                body = compress ? encode(codec, body) : body,
+                connect_timeout = ceil(Int, connect_timeout),
+                read_timeout = ceil(Int, read_timeout),
+                retry = retry,
+                retry_delay = retry_delay,
+                ssl_verifyhost = client.config.verify_ssl,
+                ssl_verifypeer = client.config.verify_ssl,
+                status_exception = false,
+                accept_encoding = nothing,
+            )
+        end
     catch e
-        throw(e isa AbstractCurlError ? CHClientException(e.message, e) : e)
+        if e isa AbstractCurlError
+            msg = try
+                e.message
+            catch
+                "libcurl error (code $(isdefined(e, :code) ? e.code : -1))"
+            end
+            throw(CHClientException(msg, e))
+        elseif e isa OhMyCHException
+            rethrow()
+        else
+            throw(CHClientException(sprint(showerror, e), e))
+        end
     end
-    code = http_header(req, "x-clickhouse-exception-code", nothing)
-    isnothing(code) || throw(CHServerException(code, req.body))
     encoding = http_header(req, "content-encoding", nothing)
     compressed = compress && encoding == enc
     res = compressed ? decode(codec, req.body) : req.body
+    code = http_header(req, "x-clickhouse-exception-code", nothing)
+    isnothing(code) || throw(CHServerException(code, res))
     check_and_throw_exception(res)
     req.status >= 400 && throw(CHClientException("HTTP $(req.status): $(String(res))"))
     return res
@@ -307,7 +327,7 @@ function execute(
 )
     _perform_query(
         client,
-        sql,
+        sql;
         parameters = parameters,
         compression = compression,
         read_timeout = read_timeout,
@@ -315,6 +335,27 @@ function execute(
         options...,
     )
     return nothing
+end
+
+_build_insert_sql(table::AbstractString) =
+    occursin(r"^\s*INSERT\s"i, table) ?
+        string(table, " FORMAT RowBinary") :
+        string("INSERT INTO ", table, " FORMAT RowBinary")
+
+function _chunked_insert!(
+    client::CHClient,
+    sql::String,
+    values::AbstractVector;
+    chunk_size::Integer = 256 * 1024,
+    kw...,
+)
+    cs = Int(chunk_size)
+    total = 0
+    for batch in RowToBinaryIter(values, cs)
+        _perform_query(client, sql; body = batch, kw...)
+        total += length(batch)
+    end
+    return total
 end
 
 """
@@ -351,28 +392,22 @@ function insert(
     client::CHClient,
     table::String,
     values::Vector{T};
-    chunk_size::Int = 256 * 1024,
+    chunk_size::Integer = 256 * 1024,
     compression::Symbol = client.config.compression,
     read_timeout::Real = client.config.read_timeout,
     max_execution_time::Int = 60,
     options...,
 ) where {T}
-    sql = if startswith(uppercase(lstrip(table)), "INSERT")
-        table * " FORMAT RowBinary"
-    else
-        "INSERT INTO $(table) FORMAT RowBinary"
-    end
-    for batch in RowToBinaryIter(values, chunk_size)
-        _perform_query(
-            client,
-            sql,
-            body = batch,
-            compression = compression,
-            read_timeout = read_timeout,
-            max_execution_time = max_execution_time,
-            options...,
-        )
-    end
+    _chunked_insert!(
+        client,
+        _build_insert_sql(table),
+        values;
+        chunk_size = chunk_size,
+        compression = compression,
+        read_timeout = read_timeout,
+        max_execution_time = max_execution_time,
+        options...,
+    )
     return nothing
 end
 
@@ -407,7 +442,7 @@ function insert_binary(
 ) where {T<:RowBinaryResult}
     _perform_query(
         client,
-        sql * " FORMAT RowBinary",
+        sql * " FORMAT RowBinary";
         body = readavailable(values.s),
         compression = compression,
         read_timeout = read_timeout,
@@ -459,7 +494,7 @@ function query(
 )
     res = _perform_query(
         client,
-        sql * " FORMAT RowBinaryWithNamesAndTypes",
+        sql * " FORMAT RowBinaryWithNamesAndTypes";
         parameters = parameters,
         compression = compression,
         read_timeout = read_timeout,
@@ -500,7 +535,7 @@ function query_binary(
 )
     res = _perform_query(
         client,
-        sql * " FORMAT RowBinary",
+        sql * " FORMAT RowBinary";
         parameters = parameters,
         compression = compression,
         read_timeout = read_timeout,
@@ -543,7 +578,6 @@ end
     fetch_one(client::CHClient, sql::AbstractString, ::Type{T} [, parameters::NamedTuple]; kw...) -> T
 
 Executes the query and returns exactly one row.
-Throws an `ArgumentError` if the query returns 0 rows.
 
 ## Examples
 
@@ -556,13 +590,15 @@ Employee("Charlie", 42, 110000.0)
 """
 function fetch_one(client::CHClient, sql::AbstractString, params::NamedTuple = NamedTuple(); kw...)
     rows = fetch_all(client, sql, params; kw...)
-    isempty(rows) && throw(ArgumentError("query returned 0 rows, expected 1"))
+    n = length(rows)
+    n == 1 || throw(ArgumentError("query returned $n rows, expected exactly 1"))
     return first(rows)
 end
 
 function fetch_one(client::CHClient, sql::AbstractString, ::Type{T}, params::NamedTuple = NamedTuple(); kw...) where {T}
     rows = fetch_all(client, sql, T, params; kw...)
-    isempty(rows) && throw(ArgumentError("query returned 0 rows, expected 1"))
+    n = length(rows)
+    n == 1 || throw(ArgumentError("query returned $n rows, expected exactly 1"))
     return first(rows)
 end
 

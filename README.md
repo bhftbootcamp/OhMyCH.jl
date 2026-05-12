@@ -78,7 +78,7 @@ insert(client, "employees", [
 ### Query
 
 ```julia
-result = query(client, "SELECT * FROM employees WHERE salary > {min_salary:Float64}", (min_salary = 80000,))
+result = query(client, "SELECT * FROM employees WHERE salary > {min_salary:Float64}", (min_salary = 80000.0,))
 
 for row in result
     println(row.name, " — ", row.salary)

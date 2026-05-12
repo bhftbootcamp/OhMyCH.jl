@@ -134,29 +134,35 @@ function Base.iterate(iter::RowToBinaryIter{T}) where {T}
     return chunk, iter
 end
 
-function Base.iterate(iter::RowToBinaryIter{T}, state) where {T}
+function Base.iterate(iter::RowToBinaryIter, state)
     return Base.iterate(iter)
 end
 
 """
-    BinaryToRowIter{F<:RowBinaryResult}
+    BinaryToRowIter{F<:RowBinaryResult, R}
 
-Iterator for row data in format `F` (see [`RowBinaryResult`](@ref)).
+Iterator for row data in format `F` (see [`RowBinaryResult`](@ref)), yielding rows of
+type `R`. Carrying `R` as a type parameter means `eltype` is concrete, so
+`collect(iter)` produces a properly-typed `Vector{R}` rather than `Vector{Any}`.
 
 ## Fields
-- `row_type::Type`: Data type whose fields define row cell types.
-- `binary::F`: Binary format containing the serialized data.
+- `row_type::Type{R}`: Data type whose fields define row cell types.
+- `binary::RowBinaryResult`: Binary format containing the serialized data.
+  Stored as the abstract supertype because the typed-`collect` path keeps the
+  original `RowBinaryWithNamesAndTypes` value but iterates it with `RowBinary`
+  dispatch (the schema header has already been consumed).
 - `column_names::NTuple{N,Symbol}`: Column names.
 - `column_types::NTuple{N,Type}`: Column types.
 """
-struct BinaryToRowIter{F<:RowBinaryResult}
-    row_type::Type
+struct BinaryToRowIter{F<:RowBinaryResult, R}
+    row_type::Type{R}
     binary::RowBinaryResult
     column_names::NTuple{N,Symbol} where {N}
     column_types::NTuple{N,Type} where {N}
 end
 
 Base.IteratorSize(::Type{<:BinaryToRowIter}) = Base.SizeUnknown()
+Base.eltype(::Type{<:BinaryToRowIter{F, R}}) where {F, R} = R
 Base.eltype(iter::BinaryToRowIter) = iter.row_type
 Base.eof(iter::BinaryToRowIter) = eof(iter.binary.s)
 
@@ -167,11 +173,11 @@ end
 function BinaryToRowIter(b::F) where {F<:RowBinaryWithNamesAndTypes}
     column_names = Tuple(Symbol.(b.column_names))
     column_types = Tuple(parse_column_type.(b.column_types))
-    row_type = NamedTuple{column_names,Tuple{column_types...}}
-    return BinaryToRowIter{F}(row_type, b, column_names, column_types)
+    R = NamedTuple{column_names, Tuple{column_types...}}
+    return BinaryToRowIter{F, R}(R, b, column_names, column_types)
 end
 
-function Base.iterate(iter::BinaryToRowIter{RowBinaryWithNamesAndTypes}, eof_state::Bool = eof(iter))
+function Base.iterate(iter::BinaryToRowIter{<:RowBinaryWithNamesAndTypes}, eof_state::Bool = eof(iter))
     eof_state && return nothing
     values = deserialize_iter(iter)
     return (iter.row_type(values), eof(iter))
@@ -208,10 +214,7 @@ function Base.iterate(::RowBinaryWithNamesAndTypes, iter::BinaryToRowIter)
 end
 
 Base.IteratorSize(::Type{RowBinaryWithNamesAndTypes}) = Base.SizeUnknown()
-
-function Base.eltype(::Type{RowBinaryWithNamesAndTypes})
-    return NamedTuple
-end
+Base.eltype(::Type{RowBinaryWithNamesAndTypes}) = NamedTuple
 
 """
     eachrow(binary::RowBinaryWithNamesAndTypes) -> BinaryToRowIter
@@ -273,17 +276,17 @@ function Base.collect(b::RowBinaryWithNamesAndTypes)
     return collect(BinaryToRowIter(b))
 end
 
-function BinaryToRowIter(t::Type, b::F) where {F<:RowBinary}
-    return BinaryToRowIter{F}(t, b, fieldnames(t), fieldtypes(t))
+function BinaryToRowIter(::Type{T}, b::F) where {T, F<:RowBinary}
+    return BinaryToRowIter{F, T}(T, b, fieldnames(T), fieldtypes(T))
 end
 
-function BinaryToRowIter(t::Type, b::F) where {F<:RowBinaryWithNamesAndTypes}
-    ft = fieldtypes(t)
+function BinaryToRowIter(::Type{T}, b::F) where {T, F<:RowBinaryWithNamesAndTypes}
+    ft = fieldtypes(T)
     st = Tuple(parse_column_type.(b.column_types))
     if ft != st
-        throw(ArgumentError("Type mismatch for $(string(t)). Expected: $st, Got: $ft. Ensure the structure matches the schema."))
+        throw(ArgumentError("Type mismatch for $(string(T)). Expected: $st, Got: $ft. Ensure the structure matches the schema."))
     end
-    return BinaryToRowIter{RowBinary}(t, b, fieldnames(t), ft)
+    return BinaryToRowIter{RowBinary, T}(T, b, fieldnames(T), ft)
 end
 
 function Base.iterate(iter::BinaryToRowIter{RowBinary}, eof_state::Bool = eof(iter))
