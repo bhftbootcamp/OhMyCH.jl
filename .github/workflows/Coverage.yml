@@ -32,7 +32,7 @@ jobs:
           - x64
     services:
       clickhouse:
-        image: clickhouse/clickhouse-server:24.8-alpine
+        image: clickhouse/clickhouse-server:latest
         ports:
           - 18123:8123
         env:
