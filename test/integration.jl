@@ -30,9 +30,14 @@ function _with_client(body::Function, tables::Vector{String} = String[]; kw...)
     end
 end
 
-function _build_then_drop_inserter(client)
-    ins = Inserter{NamedTuple{(:x,), Tuple{Int32}}}(client, "_dummy"; period = 10.0)
-    return WeakRef(ins)
+function _inserter_was_collected(client)
+    w = let ins = Inserter{NamedTuple{(:x,), Tuple{Int32}}}(client, "_dummy"; period = 10.0)
+        WeakRef(ins)
+    end
+    for _ in 1:5
+        GC.gc(true)
+    end
+    return w.value === nothing
 end
 
 @testset "Integration tests" begin
@@ -527,11 +532,7 @@ end
 
     @testset "Inserter with period does not leak when dropped without close" begin
         _with_client() do client
-            w = _build_then_drop_inserter(client)
-            for _ in 1:5
-                GC.gc(true)
-            end
-            @test w.value === nothing
+            @test _inserter_was_collected(client)
         end
     end
 
