@@ -3,10 +3,7 @@ name: Documenter
 on:
   push:
     tags: [v*]
-    branches: # REMOVE
-      - master # REMOVE
   pull_request:
-  workflow_dispatch: # REMOVE
 
 jobs:
   Documenter:
