@@ -1,52 +1,22 @@
-#__ query_parameters
+stringify_value(::Union{Nothing,Missing}) = "NULL"
+stringify_value(v::Bool) = v ? "1" : "0"
+stringify_value(v::AbstractString) = "'" * escape_string(v) * "'"
+stringify_value(v::Date) = format(v, "yyyy-mm-dd")
+stringify_value(v::DateTime) = format(v, "yyyy-mm-dd HH:MM:SS")
+stringify_value(v::NanoDate) = format(v, "yyyy-mm-ddTHH:MM:SS.sssssssss")
+stringify_value(v::Real) = isnan(v) ? "nan" : isinf(v) ? (v == Inf ? "+inf" : "-inf") : string(v)
+stringify_value(v::Union{UUID,IPv4,IPv6}) = string(v)
 
-@inline stringify_value(::Union{Nothing,Missing})::String = "NULL"
-
-@inline function stringify_value(v::AbstractString)::String
-    return string("'", escape_string(v), "'")
+function stringify_value(d::AbstractDict)
+    return "{" * join(("$(stringify_value(k)):$(stringify_value(v))" for (k, v) in d), ",") * "}"
 end
 
-@inline function stringify_value(v::Date)::String
-    return format(v, "yyyy-mm-dd")
-end
-
-@inline function stringify_value(v::DateTime)::String
-    return format(v, "yyyy-mm-dd HH:MM:SS")
-end
-
-@inline function stringify_value(v::NanoDate)::String
-    return format(v, "yyyy-mm-ddTHH:MM:SS.sssssssss")
-end
-
-@inline function stringify_value(v::Real)::String
-    return isnan(v) ? "nan" : isinf(v) ? (v == Inf ? "+inf" : "-inf") : string(v)
-end
-
-@inline stringify_value(v::UUID)::String = string(v)
-@inline stringify_value(v::IPv4)::String = string(v)
-@inline stringify_value(v::IPv6)::String = string(v)
-
-@inline function stringify_value(v::AbstractDict)::String
-    parts = Vector{String}(undef, length(v))
-    for (i, (key, val)) in enumerate(v)
-        parts[i] = "$(stringify_value(key)):$(stringify_value(val))"
-    end
-    return "{" * join(parts, ",") * "}"
-end
-
-@inline function stringify_value(v::AbstractArray)::String
-    parts = map(stringify_value, v)
-    return "[" * join(parts, ",") * "]"
-end
-
-@inline function stringify_value(v::Tuple)::String
-    parts = map(stringify_value, v)
-    return "(" * join(parts, ",") * ")"
-end
+stringify_value(v::AbstractArray) = "[" * join(map(stringify_value, v), ",") * "]"
+stringify_value(v::Tuple) = "(" * join(map(stringify_value, v), ",") * ")"
 
 parameter_to_string(v::AbstractString) = v
-parameter_to_string(::Union{Nothing,Missing})::String = "\\N"
-parameter_to_string(@nospecialize(x))::String = stringify_value(x)
+parameter_to_string(::Union{Nothing,Missing}) = "\\N"
+parameter_to_string(@nospecialize(x)) = stringify_value(x)
 
 """
     parameters_to_strings(values::NamedTuple) -> Vector{Pair{String,String}}
@@ -73,7 +43,7 @@ julia> parameters_to_strings((
            tuple = (1, -2, 3.0, true, NaN, Inf),
        ))
 1-element Vector{Pair{String, String}}:
- "param_tuple" => "(1,-2,3.0,true,nan,+inf)"
+ "param_tuple" => "(1,-2,3.0,1,nan,+inf)"
 
 julia> parameters_to_strings((
            dict = Dict(
@@ -87,7 +57,7 @@ julia> parameters_to_strings((
 """
 function parameters_to_strings end
 
-function parameters_to_strings(params::NamedTuple)::Vector{Pair{String,String}}
+function parameters_to_strings(params::NamedTuple)
     return ["param_$k" => parameter_to_string(v) for (k, v) in pairs(params)]
 end
 

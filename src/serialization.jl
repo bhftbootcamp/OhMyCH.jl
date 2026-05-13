@@ -1,5 +1,3 @@
-#__ serialization
-
 """
     Serializer{I<:IO}
 
@@ -8,65 +6,48 @@ Custom IO wrapper for (de)serializing binary data streams.
 struct Serializer{I<:IO}
     io::I
 
-    Serializer(x::I) where {I<:IO} = new{I}(x)
-    Serializer(x::IOBuffer) = new{IOBuffer}(x)
+    Serializer(io::I) where {I<:IO} = new{I}(io)
     Serializer(x::AbstractVector{UInt8}) = new{IOBuffer}(IOBuffer(x))
-    Serializer() = Serializer(IOBuffer())
+    Serializer() = new{IOBuffer}(IOBuffer())
 end
 
-Base.close(s::Serializer) = close(s.io)
-Base.eof(s::Serializer) = eof(s.io)
-Base.read(s::Serializer, x) = read(s.io, x)
-Base.write(s::Serializer, x) = write(s.io, x)
-Base.seek(s::Serializer, p::Integer) = seek(s.io, p)
-Base.seekstart(s::Serializer) = seekstart(s.io)
-Base.seekend(s::Serializer) = seekend(s.io)
-Base.position(s::Serializer) = position(s.io)
-Base.readavailable(s::Serializer) = readavailable(s.io)
+for f in (:close, :eof, :read, :write, :seek, :seekstart, :seekend, :position, :readavailable)
+    @eval Base.$f(s::Serializer, args...) = $f(s.io, args...)
+end
 
-@inline function write_leb128(s::Serializer, value::Integer)
-    total_bytes::Int = 0
+function write_leb128(s::Serializer, v::Integer)
+    n = 0
     while true
-        byte = value & 0x7f
-        value >>= 7
-        if value != 0
-            total_bytes += write(s, UInt8(byte | 0x80))
-        else
-            total_bytes += write(s, UInt8(byte))
-            break
-        end
+        b = v & 0x7f
+        v >>= 7
+        n += write(s, UInt8(v != 0 ? b | 0x80 : b))
+        v == 0 && break
     end
-    return total_bytes
+    return n
 end
 
-@inline function read_leb128(s::Serializer)
-    value = 0
-    shift = 0
+function read_leb128(s::Serializer)
+    v, shift = UInt64(0), 0
     while true
-        if eof(s)
-            error("Unexpected end of file while reading LEB128 number.")
-        end
-        byte = read(s, UInt8)
-        value |= (UInt64(byte & 0x7f) << shift)
-        if (byte & 0x80) == 0
-            return value
-        end
+        eof(s) && error("Unexpected end of file while reading LEB128 number.")
+        b = read(s, UInt8)
+        v |= UInt64(b & 0x7f) << shift
+        (b & 0x80) == 0 && return v
         shift += 7
-        if shift > 63
-            error("LEB128 number is too long.")
-        end
+        shift > 63 && error("LEB128 number is too long.")
     end
 end
 
 """
-    serialize(s::Serializer, value::T) -> Int
+    serialize(s::Serializer, ::Type{T}, value::T) -> Int
+    serialize(s::Serializer, value) -> Int
 
 Writes the byte representation of `value` to buffer `s`.
 
 ## Examples
 
 ```julia-repl
-julia> using ClickHouse: Serializer, serialize, deserialize
+julia> import OhMyCH: Serializer, serialize, deserialize
 
 julia> s = Serializer();
 
@@ -99,120 +80,76 @@ julia> deserialize(s, String)
 """
 function serialize end
 
-@inline function serialize(s::Serializer, ::Type{T}, value::T) where {T<:Integer}
-    return write(s, value)
+serialize(s::Serializer, ::Type{T}, v::T) where {T<:Integer} = write(s, v)
+serialize(s::Serializer, ::Type{T}, v::T) where {T<:AbstractFloat} = write(s, v)
+serialize(s::Serializer, ::Type{Bool}, v::Bool) = write(s, UInt8(v))
+serialize(s::Serializer, ::Type{T}, v::T) where {T<:FixedString} = write(s, v)
+serialize(s::Serializer, ::Type{IPv4}, v::IPv4) = write(s, UInt32(v))
+serialize(s::Serializer, ::Type{IPv6}, v::IPv6) = write(s, hton(UInt128(v)))
+serialize(s::Serializer, ::Type{Date}, v::Date) = write(s, UInt16(Dates.value(v - Date(1970, 1, 1))))
+serialize(s::Serializer, ::Type{DateTime}, v::DateTime) = write(s, Int32(Dates.value(v - DateTime(1970, 1, 1)) ÷ 1000))
+serialize(s::Serializer, ::Type{NanoDate}, v::NanoDate) = write(s, Int64(nanodate2unixnanos(v)))
+serialize(s::Serializer, ::Type{Time}, v::Time) = write(s, Int32(hour(v) * 3600 + minute(v) * 60 + second(v)))
+
+function serialize(s::Serializer, ::Type{String}, v::String)
+    n = write_leb128(s, ncodeunits(v))
+    return n + write(s, v)
 end
 
-@inline function serialize(s::Serializer, ::Type{T}, value::T) where {T<:AbstractFloat}
-    return write(s, value)
+const _UUID_PERM = (8, 7, 6, 5, 4, 3, 2, 1, 16, 15, 14, 13, 12, 11, 10, 9)
+
+function serialize(s::Serializer, ::Type{UUID}, v::UUID)
+    u = UInt128(v)
+    buf = ntuple(j -> UInt8((u >> (8 * (16 - _UUID_PERM[j]))) & 0xFF), Val(16))
+    return write(s, collect(buf))
 end
 
-@inline function serialize(s::Serializer, ::Type{Bool}, value::Bool)
-    return write(s, UInt8(value ? 1 : 0))
-end
-
-@inline function serialize(s::Serializer, ::Type{String}, value::String)
-    total_bytes = write_leb128(s, ncodeunits(value))
-    return total_bytes + write(s, value)
-end
-
-@inline function serialize(s::Serializer, ::Type{Time}, value::Time)
-    seconds = hour(value) * 3600 + minute(value) * 60 + second(value)
-    return write(s, Int32(seconds))
-end
-
-@inline function serialize(s::Serializer, ::Type{Date}, value::Date)
-    days = Dates.value(value - Date(1970, 1, 1))
-    return write(s, UInt16(days))
-end
-
-@inline function serialize(s::Serializer, ::Type{DateTime}, value::DateTime)
-    seconds = Dates.value(value - DateTime(1970, 1, 1)) ÷ 1000
-    return write(s, Int32(seconds))
-end
-
-@inline function serialize(s::Serializer, ::Type{NanoDate}, value::NanoDate)
-    ns = nanodate2unixnanos(value)
-    return write(s, Int64(ns))
-end
-
-@inline function serialize(s::Serializer, ::Type{IPv4}, value::IPv4)
-    return write(s, UInt32(value))
-end
-
-@inline function serialize(s::Serializer, ::Type{IPv6}, value::IPv6)
-    return write(s, hton(UInt128(value)))
-end
-
-@inline function serialize(s::Serializer, ::Type{UUID}, value::UUID)
-    u128 = UInt128(value)
-    bytes = [UInt8((u128 >> (8 * (i - 1))) & 0xFF) for i = 16:-1:1]
-    perm = [8, 7, 6, 5, 4, 3, 2, 1, 16, 15, 14, 13, 12, 11, 10, 9]
-    return write(s, bytes[perm])
-end
-
-@inline function serialize(s::Serializer, ::Type{T}, value::T) where {T<:FixedString}
-    return write(s, value)
-end
-
-@inline function serialize(s::Serializer, ::Type{T}, value::T) where {T<:AbstractVector}
-    total_bytes = write_leb128(s, length(value))
+function serialize(s::Serializer, ::Type{T}, v::T) where {T<:AbstractVector}
+    n = write_leb128(s, length(v))
     et = eltype(T)
-    @inbounds for i in eachindex(value)
-        total_bytes += serialize(s, et, value[i])
+    @inbounds for i in eachindex(v)
+        n += serialize(s, et, v[i])
     end
-    return total_bytes
+    return n
 end
 
-@inline function serialize(s::Serializer, ::Type{T}, value::T) where {T<:AbstractDict}
-    total_bytes = write_leb128(s, length(value))
-    kt = keytype(T)
-    vt = valtype(T)
-    for (k, v) in value
-        total_bytes += serialize(s, kt, k)
-        total_bytes += serialize(s, vt, v)
+function serialize(s::Serializer, ::Type{T}, d::T) where {T<:AbstractDict}
+    n = write_leb128(s, length(d))
+    kt, vt = keytype(T), valtype(T)
+    for (k, v) in d
+        n += serialize(s, kt, k)
+        n += serialize(s, vt, v)
     end
-    return total_bytes
+    return n
 end
 
-@inline function serialize(s::Serializer, ::Type{Tuple{}}, value::Tuple{})
-    return error("Serialization of empty tuples (Tuple{}) is not supported.")
-end
+serialize(s::Serializer, ::Type{Tuple{}}, ::Tuple{}) = error("Serialization of empty tuples (Tuple{}) is not supported.")
 
-@inline function serialize(s::Serializer, ::Type{T}, value::T) where {T<:Tuple}
-    total_bytes::Int = 0
-    for (x, t) in zip(value, fieldtypes(T))
-        total_bytes += serialize(s, t, x)
+function serialize(s::Serializer, ::Type{T}, v::T) where {T<:Tuple}
+    n = 0
+    for (x, t) in zip(v, fieldtypes(T))
+        n += serialize(s, t, x)
     end
-    return total_bytes
+    return n
 end
 
-@inline function serialize(s::Serializer, ::Type{Union{Nothing,T}}, value) where {T}
-    return if isnothing(value)
-        write(s, UInt8(0x01))
-    else
-        write(s, UInt8(0x00))
-        serialize(s, T, value) + 1 # bytes of `value` + UInt8
-    end
+function serialize(s::Serializer, ::Type{Union{Nothing,T}}, v) where {T}
+    isnothing(v) && return write(s, UInt8(0x01))
+    return write(s, UInt8(0x00)) + serialize(s, T, v)
 end
 
-@inline function serialize(s::Serializer, T::Type, value)
-    return error("Unsupported type $(T) for serialization.")
-end
+serialize(s::Serializer, T::Type, v) = error("Unsupported type $T for serialization.")
 
 serialize(s::Serializer, @nospecialize(x)) = serialize_any(s, x)
 
 function serialize_any(s::Serializer, @nospecialize(x))
     t = typeof(x)::DataType
-    return if isprimitivetype(t)
-        serialize(s, t, x)
-    else
-        total_bytes::Int = 0
-        for i = 1:nfields(x)
-            total_bytes += serialize(s, fieldtype(t, i), getfield(x, i))
-        end
-        total_bytes
+    isprimitivetype(t) && return serialize(s, t, x)
+    n = 0
+    for i = 1:nfields(x)
+        n += serialize(s, fieldtype(t, i), getfield(x, i))
     end
+    return n
 end
 
 """
@@ -223,7 +160,7 @@ Reads a sequence of bytes corresponding to type `T` from buffer `s`, and then cr
 ## Examples
 
 ```julia-repl
-julia> using ClickHouse: Serializer, serialize, deserialize
+julia> import OhMyCH: Serializer, serialize, deserialize
 
 julia> s = Serializer([0x0a, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x8f, 0x40]);
 
@@ -239,101 +176,58 @@ julia> deserialize(s, Float64)
 """
 function deserialize end
 
-@inline function deserialize(s::Serializer, ::Type{T}) where {T<:Integer}
-    return read(s, T)
+deserialize(s::Serializer, ::Type{T}) where {T<:Integer} = read(s, T)
+deserialize(s::Serializer, ::Type{T}) where {T<:AbstractFloat} = read(s, T)
+deserialize(s::Serializer, ::Type{Bool}) = read(s, UInt8) != 0
+deserialize(s::Serializer, ::Type{String}) = String(read(s, read_leb128(s)))
+deserialize(s::Serializer, ::Type{T}) where {T<:FixedString} = read(s, T)
+deserialize(s::Serializer, ::Type{IPv4}) = IPv4(read(s, UInt32))
+deserialize(s::Serializer, ::Type{IPv6}) = IPv6(ntoh(read(s, UInt128)))
+deserialize(s::Serializer, ::Type{Date}) = Date(1970, 1, 1) + Day(read(s, UInt16))
+deserialize(s::Serializer, ::Type{DateTime}) = DateTime(1970, 1, 1) + Second(read(s, Int32))
+
+function deserialize(s::Serializer, ::Type{Time})
+    t = read(s, Int32) % 86400
+    return Time(t ÷ 3600, (t % 3600) ÷ 60, t % 60)
 end
 
-@inline function deserialize(s::Serializer, ::Type{T}) where {T<:AbstractFloat}
-    return read(s, T)
+function deserialize(s::Serializer, ::Type{NanoDate})
+    ns = read(s, Int64)
+    ns == 0 && return NanoDate(1970)
+    o = floor(Int, log10(abs(ns))) + 1
+    return unixnanos2nanodate(ns * 10^(19 - o))
 end
 
-@inline function deserialize(s::Serializer, ::Type{Bool})
-    return read(s, UInt8) != 0
-end
-
-@inline function deserialize(s::Serializer, ::Type{String})
-    len = read_leb128(s)
-    return String(read(s, len))
-end
-
-@inline function deserialize(s::Serializer, ::Type{Time})
-    b = read(s, Int32)
-    second = b % 86400
-    return Time(second ÷ 3600, (second % 3600) ÷ 60, second % 60)
-end
-
-@inline function deserialize(s::Serializer, ::Type{Date})
-    days = read(s, UInt16)
-    return Date(1970, 1, 1) + Day(days)
-end
-
-@inline function deserialize(s::Serializer, ::Type{DateTime})
-    seconds = read(s, Int32)
-    return DateTime(1970, 1, 1) + Second(seconds)
-end
-
-@inline function deserialize(s::Serializer, ::Type{NanoDate})
-    nanos = read(s, Int64)
-    nanos == 0 && return 0
-    o = floor(Int, log10(abs(nanos))) + 1
-    z = 19 - o
-    return unixnanos2nanodate(nanos * 10^z)
-end
-
-@inline function deserialize(s::Serializer, ::Type{IPv4})
-    return IPv4(read(s, UInt32))
-end
-
-@inline function deserialize(s::Serializer, ::Type{IPv6})
-    return IPv6(ntoh(read(s, UInt128)))
-end
-
-@inline function deserialize(s::Serializer, ::Type{UUID})
+function deserialize(s::Serializer, ::Type{UUID})
     bytes = read(s, sizeof(UInt128))
-    perm = [8, 7, 6, 5, 4, 3, 2, 1, 16, 15, 14, 13, 12, 11, 10, 9]
-    uuid = UInt128(0)
-    for (i, byte) in enumerate(bytes[perm])
-        uuid |= UInt128(byte) << ((16 - i) * 8)
+    u = UInt128(0)
+    for (i, p) in enumerate(_UUID_PERM)
+        u |= UInt128(bytes[p]) << ((16 - i) * 8)
     end
-    return UUID(uuid)
+    return UUID(u)
 end
 
-@inline function deserialize(s::Serializer, ::Type{T}) where {T<:FixedString}
-    return read(s, T)
-end
-
-@inline function deserialize(s::Serializer, ::Type{T}) where {T<:AbstractVector}
-    len = read_leb128(s)
+function deserialize(s::Serializer, ::Type{T}) where {T<:AbstractVector}
+    n = read_leb128(s)
     et = eltype(T)
-    arr = Vector{eltype(T)}(undef, len)
-    for i = 1:len
+    arr = Vector{et}(undef, n)
+    for i = 1:n
         arr[i] = deserialize(s, et)
     end
     return T(arr)
 end
 
-@inline function deserialize(s::Serializer, ::Type{T}) where {T<:AbstractDict}
-    len = read_leb128(s)
-    kt = keytype(T)
-    vt = valtype(T)
-    dict = T()
-    for _ = 1:len
-        key = deserialize(s, kt)
-        val = deserialize(s, vt)
-        dict[key] = val
+function deserialize(s::Serializer, ::Type{T}) where {T<:AbstractDict}
+    n = read_leb128(s)
+    kt, vt = keytype(T), valtype(T)
+    d = T()
+    for _ = 1:n
+        k = deserialize(s, kt)
+        d[k] = deserialize(s, vt)
     end
-    return T(dict)
+    return T(d)
 end
 
-@inline function deserialize(s::Serializer, ::Type{Union{Nothing,T}}) where {T}
-    return read(s, UInt8) == 0x01 ? nothing : deserialize(s, T)
-end
-
-@inline function deserialize(s::Serializer, ::Type{T}) where {T<:Tuple}
-    nt = ntuple(i -> deserialize(s, fieldtype(T, i)), fieldcount(T))
-    return T(nt)
-end
-
-@inline function deserialize(s::Serializer, ::Type{T}) where {T}
-    return error("Unsupported type $(T) for deserialization.")
-end
+deserialize(s::Serializer, ::Type{Union{Nothing,T}}) where {T} = read(s, UInt8) == 0x01 ? nothing : deserialize(s, T)
+deserialize(s::Serializer, ::Type{T}) where {T<:Tuple} = T(ntuple(i -> deserialize(s, fieldtype(T, i)), fieldcount(T)))
+deserialize(s::Serializer, ::Type{T}) where {T} = error("Unsupported type $T for deserialization.")

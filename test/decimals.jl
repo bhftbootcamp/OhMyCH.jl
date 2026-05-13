@@ -1,5 +1,3 @@
-#__ decimals
-
 using OhMyCH.DecFP
 
 @testset verbose = true "Decimal constructors" begin

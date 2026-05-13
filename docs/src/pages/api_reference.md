@@ -1,38 +1,79 @@
 # API Reference
 
+## Connection
+
 ```@docs
-OhMyCH.HttpConfig
-OhMyCH.HttpClient
-ohmych_connect
-isopen
-close
+CHConfig
+CHClient
+connect
+Base.isopen(::OhMyCH.CHClient)
+Base.close(::OhMyCH.CHClient)
+ping
+server_version
 ```
 
-## Database requests
+## Queries
 
 ```@docs
 execute
-insert
 query
-insert_binary
 query_binary
+fetch_all
+fetch_one
+fetch_optional
+```
+
+## Insert
+
+```@docs
+insert
+insert_binary
+```
+
+## Inserter
+
+```@docs
+InsertStats
+Inserter
+Base.write(::OhMyCH.Inserter{T}, ::Any) where {T}
+commit!
+flush!
+Base.close(::OhMyCH.Inserter)
+inserter
+```
+
+## Binary formats
+
+```@docs
+RowBinaryResult
+RowBinary
+RowBinaryWithNamesAndTypes
+parse_column_type
 ```
 
 ## Row iteration
 
 ```@docs
-eachrow
-collect
+Base.eachrow(::OhMyCH.RowBinaryWithNamesAndTypes)
+Base.eachrow(::Type, ::OhMyCH.RowBinaryResult)
+Base.collect(::OhMyCH.RowBinaryWithNamesAndTypes)
+```
+
+## Compression
+
+```@docs
+Codec
+LZ4
+NoCompression
 ```
 
 ## [Column types](@id column_types)
 
-Most of the ClickHouse column types are the same as the Julia base types.
-
 | ClickHouse Type      | Julia Type            |
 |----------------------|-----------------------|
 | Bool                 | Bool                  |
-| Int8-128, UInt8-128  | Int8-128, UInt8-128   |
+| Int8 – Int128        | Int8 – Int128         |
+| UInt8 – UInt128      | UInt8 – UInt128       |
 | Float32, Float64     | Float32, Float64      |
 | Decimal(P,S)         | Decimal{P,S}          |
 | String               | String                |
@@ -43,33 +84,29 @@ Most of the ClickHouse column types are the same as the Julia base types.
 | Enum8, Enum16        | UInt8, UInt16         |
 | UUID                 | UUID                  |
 | IPv4, IPv6           | IPv4, IPv6            |
-| Array(T)             | AbstractVector{T}     |
-| Tuple(T1, T2, ...)   | Tuple                 |
-| Map(K, V)            | AbstractDict{K,V}     |
+| Array(T)             | Vector{T}             |
+| Tuple(T1, T2, ...)   | Tuple{T1, T2, ...}    |
+| Map(K, V)            | Dict{K, V}            |
+| Nullable(T)          | Union{Nothing, T}     |
 | LowCardinality(T)    | T                     |
-| Nullable(T)          | Union{Nothing,T}      |
-
-However, some types had to be implemented independently.
 
 ### Decimal
 
 ```@docs
+AbstractDecimal
 Decimal
-Decimal(::Union{Real,AbstractString,OhMyCH.DecimalFP})
-Decimal(::Integer, ::Integer, ::Integer)
 ```
 
 ### FixedString
 
 ```@docs
 FixedString
-FixedString(::AbstractString)
 ```
 
 ## Exceptions
 
 ```@docs
-OhMyCH.OhMyCHException
+OhMyCHException
 CHServerException
 CHClientException
 ```
