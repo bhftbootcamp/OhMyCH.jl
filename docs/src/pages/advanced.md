@@ -73,7 +73,17 @@ OhMyCH.deserialize
 ```@docs
 OhMyCH.RowToBinaryIter
 OhMyCH.BinaryToRowIter
+OhMyCH.SchemaRowIter
 Base.iterate(::OhMyCH.RowBinaryWithNamesAndTypes)
+```
+
+## Schema-driven (de)serialization
+
+```@docs
+OhMyCH.deserialize(::OhMyCH.Serializer, ::OhMyCH.CHPrimitive)
+OhMyCH.serialize(::OhMyCH.Serializer, ::OhMyCH.CHPrimitive, ::Any)
+OhMyCH.insert_plan
+OhMyCH.column_positions
 ```
 
 ## Column type parsing internals

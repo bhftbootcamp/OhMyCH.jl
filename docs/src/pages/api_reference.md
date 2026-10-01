@@ -28,6 +28,8 @@ fetch_optional
 ```@docs
 insert
 insert_binary
+table_schema
+OhMyCH.Column
 ```
 
 ## Inserter
@@ -57,6 +59,7 @@ parse_column_type
 Base.eachrow(::OhMyCH.RowBinaryWithNamesAndTypes)
 Base.eachrow(::Type, ::OhMyCH.RowBinaryResult)
 Base.collect(::OhMyCH.RowBinaryWithNamesAndTypes)
+OhMyCH.coerce
 ```
 
 ## Compression

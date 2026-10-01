@@ -10,7 +10,8 @@ export query,
     query_binary,
     insert,
     insert_binary,
-    execute
+    execute,
+    table_schema
 
 export fetch_all,
     fetch_one,
@@ -56,6 +57,7 @@ include("decimals.jl")
 include("fixed_strings.jl")
 include("column_types.jl")
 include("serialization.jl")
+include("schema.jl")
 include("row_binary.jl")
 include("tables.jl")
 include("compression.jl")

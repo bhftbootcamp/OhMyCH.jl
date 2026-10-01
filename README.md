@@ -69,11 +69,19 @@ struct Employee
 end
 
 insert(client, "employees", [
-    Employee("Alice",   Int32(29), 75000.5),
-    Employee("Bob",     Int32(35), 92000.0),
-    Employee("Charlie", Int32(42), 110000.0),
+    Employee("Alice",   29, 75000.5),
+    Employee("Bob",     35, 92000.0),
+    Employee("Charlie", 42, 110000.0),
 ])
 ```
+
+The columns are named after the row's fields — `INSERT INTO employees (name, age, salary)` —
+so the field order does not have to follow the table, and every value is written as its
+column's own type: an `Int` into an `Int32` column, a `DateTime` into a `DateTime64(3)`,
+a `Float64` into a `Decimal(18, 8)`, `missing` into a `Nullable`. The table's schema is
+asked of the server once per client (`table_schema`). A field that names no column is
+an error before anything is sent; a full `INSERT INTO t (b, a)` statement is sent as
+written, positionally.
 
 ### Query
 
@@ -98,6 +106,13 @@ top = fetch_one(client, "SELECT * FROM employees ORDER BY salary DESC LIMIT 1", 
 row = fetch_optional(client, "SELECT * FROM employees WHERE name = {n:String}", Employee, (n = "Unknown",))
 ```
 
+Columns are matched to the fields of `Employee` by name, in any order and with extra
+columns ignored, and each value is coerced to the field's type: an `Int32` column fills
+an `Int` field, a `DateTime64` a `DateTime`, a `Decimal` a `Float64`, a `Nullable` a
+`Union{Missing,T}` (or `Union{Nothing,T}`). A field without a column, or a `NULL` for a
+field that cannot hold one, is an `ArgumentError` naming it. `Tuple` row types are
+filled by position.
+
 ### Inserter
 
 Streaming insert with automatic flushing by row count, byte size, or time period:
@@ -105,7 +120,7 @@ Streaming insert with automatic flushing by row count, byte size, or time period
 ```julia
 inserter(client, "employees", Employee; max_rows = 1000, period = 5.0) do ins
     for i in 1:10_000
-        write(ins, Employee("user_$i", Int32(i % 50), Float64(50000 + i)))
+        write(ins, Employee("user_$i", i % 50, 50000.0 + i))
         commit!(ins)  # flushes only when a threshold is reached
     end
 end
@@ -133,6 +148,11 @@ end
 | Map(K, V)            | Dict{K, V}            |
 | Nullable(T)          | Union{Nothing, T}     |
 | LowCardinality(T)    | T                     |
+
+These are the types a `NamedTuple` row carries. A typed row (`fetch_all(client, sql, T)`)
+may declare any field type the column's value converts to; a `DateTime64` column is always
+decoded by its declared precision when the result carries a schema (`query`), and only
+guessed from the value's magnitude without one (`query_binary`).
 
 ## Useful links
 

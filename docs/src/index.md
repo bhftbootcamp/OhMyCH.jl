@@ -35,9 +35,9 @@ connect("http://127.0.0.1:8123") do client
     """)
 
     insert(client, "employees", [
-        Employee("Alice",   Int32(29), 75000.5),
-        Employee("Bob",     Int32(35), 92000.0),
-        Employee("Charlie", Int32(42), 110000.0),
+        Employee("Alice",   29, 75000.5),
+        Employee("Bob",     35, 92000.0),
+        Employee("Charlie", 42, 110000.0),
     ])
 
     for row in query(client, "SELECT * FROM employees")
@@ -70,3 +70,8 @@ end
 | Map(K, V)            | Dict{K, V}            |
 | Nullable(T)          | Union{Nothing, T}     |
 | LowCardinality(T)    | T                     |
+
+These are the types a `NamedTuple` row carries. A typed row (`fetch_all(client, sql, T)`)
+may declare any field type the column's value converts to; a `DateTime64` column is always
+decoded by its declared precision when the result carries a schema (`query`), and only
+guessed from the value's magnitude without one (`query_binary`).
