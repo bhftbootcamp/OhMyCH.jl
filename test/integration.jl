@@ -15,6 +15,16 @@ struct BinRow
     val::String
 end
 
+struct Trade
+    id::Int
+    at::DateTime
+    price::Float64
+    qty::Int
+    note::Union{Missing,String}
+end
+
+Base.:(==)(x::Trade, y::Trade) = x.id == y.id && x.at == y.at && x.price == y.price && x.qty == y.qty && isequal(x.note, y.note)
+
 function _with_client(body::Function, tables::Vector{String} = String[]; kw...)
     client = connect(CH_URL; password = CH_PASSWORD, kw...)
     try
@@ -41,6 +51,123 @@ function _inserter_was_collected(client)
 end
 
 @testset "Integration tests" begin
+
+    @testset "insert names the columns after the row's fields" begin
+        tbl = _tbl("named")
+        _with_client([tbl]) do client
+            execute(client, """
+                CREATE TABLE $tbl (
+                    id    UInt32,
+                    at    DateTime64(3),
+                    price Decimal(18, 8),
+                    note  Nullable(String),
+                    tag   LowCardinality(String) DEFAULT 'none',
+                    twice UInt32 MATERIALIZED id * 2
+                ) ENGINE = MergeTree() ORDER BY id
+            """)
+            # fields in another order than the table, plain Julia types for
+            # typed columns, a column left to its DEFAULT
+            insert(client, tbl, [
+                (price = 1.5, note = missing, at = DateTime(1999, 1, 1, 12, 0, 0, 250), id = 1),
+                (price = 2, note = "n", at = DateTime(2024, 6, 1), id = 2),
+            ])
+            got = fetch_all(client, "SELECT id, at, price, note, tag, twice FROM $tbl ORDER BY id")
+            @test [r.id for r in got] == UInt32[1, 2]
+            @test got[1].at == NanoDate("1999-01-01T12:00:00.250")   # before 2001: exact, by the column's precision
+            @test got[1].price == Decimal{18,8}("1.5")
+            @test got[1].note === nothing && got[2].note == "n"
+            @test got[1].tag == "none" && got[1].twice == UInt32(2)
+
+            # a Tuple fills the insertable columns in table order
+            insert(client, tbl, [(3, DateTime(2024, 1, 1), 3.25, nothing, "t")])
+            @test fetch_one(client, "SELECT price, tag FROM $tbl WHERE id = 3") == (price = Decimal{18,8}("3.25"), tag = "t")
+
+            # a field that is not a column is refused before anything is sent
+            err = try
+                insert(client, tbl, [(id = 4, pirce = 1.0)])
+            catch e
+                e
+            end
+            @test err isa ArgumentError && occursin("pirce", err.msg) && occursin(tbl, err.msg)
+            @test fetch_one(client, "SELECT count() AS n FROM $tbl").n == 3
+
+            # the schema is asked once and refreshed on demand
+            @test length(table_schema(client, tbl)) == 6
+            execute(client, "ALTER TABLE $tbl ADD COLUMN extra UInt8 DEFAULT 9")
+            @test length(table_schema(client, tbl)) == 6
+            @test length(table_schema(client, tbl; refresh = true)) == 7
+            insert(client, tbl, [(id = 5, at = DateTime(2024, 1, 1), price = 5, extra = 1)])
+            @test fetch_one(client, "SELECT extra FROM $tbl WHERE id = 5").extra == UInt8(1)
+
+            # a full INSERT statement is sent as written, positionally, from the
+            # Julia types alone — as before (so the values must already be the
+            # columns' exact types)
+            insert(client, "INSERT INTO $tbl (id, price)", [(UInt32(6), Decimal{18,8}("6"))])
+            @test fetch_one(client, "SELECT price, at FROM $tbl WHERE id = 6") == (price = Decimal{18,8}("6"), at = NanoDate(1970))
+        end
+    end
+
+    @testset "typed fetch matches columns by name and coerces to the field" begin
+        tbl = _tbl("typed_by_name")
+        _with_client([tbl]) do client
+            execute(client, """
+                CREATE TABLE $tbl (
+                    id    UInt32,
+                    at    DateTime64(6),
+                    price Decimal(18, 8),
+                    qty   Int32,
+                    note  Nullable(String)
+                ) ENGINE = MergeTree() ORDER BY id
+            """)
+            insert(client, tbl, [
+                (id = 1, at = DateTime(1999, 12, 31, 23, 59, 59, 999), price = 10.5, qty = 3, note = nothing),
+                (id = 2, at = DateTime(2024, 2, 29), price = 0.25, qty = -1, note = "x"),
+            ])
+            rows = fetch_all(client, "SELECT note, qty, price, at, id, id * 2 AS unused FROM $tbl ORDER BY id", Trade)
+            @test rows == [
+                Trade(1, DateTime(1999, 12, 31, 23, 59, 59, 999), 10.5, 3, missing),
+                Trade(2, DateTime(2024, 2, 29), 0.25, -1, "x"),
+            ]
+            # NamedTuple rows: the same, by name
+            nt = fetch_one(client, "SELECT * FROM $tbl WHERE id = 2", NamedTuple{(:qty, :note),Tuple{Int,Union{Nothing,String}}})
+            @test nt == (qty = -1, note = "x")
+            # Tuples: by position, the selected columns in order
+            @test fetch_one(client, "SELECT id, qty FROM $tbl WHERE id = 1", Tuple{Int,Int}) == (1, 3)
+            # a NULL into a field that cannot hold it, and a missing column, are named
+            err = try
+                fetch_all(client, "SELECT * FROM $tbl", NamedTuple{(:note,),Tuple{String}})
+            catch e
+                e
+            end
+            @test err isa ArgumentError && occursin("NULL", err.msg)
+            err = try
+                fetch_all(client, "SELECT id FROM $tbl", Trade)
+            catch e
+                e
+            end
+            @test err isa ArgumentError && occursin("at, price, qty, note", err.msg)
+            # eachrow and the Tables interface see the same schema
+            it = eachrow(Trade, query(client, "SELECT * FROM $tbl ORDER BY id"))
+            @test Tables.schema(it).names == fieldnames(Trade)
+            @test length(collect(it)) == 2
+        end
+    end
+
+    @testset "Inserter writes by the table's columns too" begin
+        tbl = _tbl("inserter_named")
+        _with_client([tbl]) do client
+            execute(client, "CREATE TABLE $tbl (a Int32, b DateTime64(3)) ENGINE = MergeTree() ORDER BY a")
+            stats = inserter(client, tbl, NamedTuple{(:b, :a),Tuple{DateTime,Int}}; max_rows = 2) do ins
+                for i in 1:3
+                    write(ins, (b = DateTime(1999, 1, i), a = i))
+                    commit!(ins)
+                end
+            end
+            @test stats.rows == 3 && stats.transactions == 2
+            @test fetch_all(client, "SELECT a, b FROM $tbl ORDER BY a") ==
+                  [(a = Int32(i), b = NanoDate(DateTime(1999, 1, i))) for i in 1:3]
+        end
+    end
 
     @testset "connect / ping / server_version / close" begin
         _with_client() do client

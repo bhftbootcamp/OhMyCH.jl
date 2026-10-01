@@ -8,6 +8,11 @@ function Tables.schema(x::RowBinaryWithNamesAndTypes)
     return Tables.Schema(names, types)
 end
 
+Tables.istable(::Type{<:SchemaRowIter}) = true
+Tables.rowaccess(::Type{<:SchemaRowIter}) = true
+Tables.rows(x::SchemaRowIter) = x
+Tables.schema(::SchemaRowIter{R}) where {R} = Tables.Schema(fieldnames(R), fieldtypes(R))
+
 Tables.istable(::Type{<:BinaryToRowIter}) = true
 Tables.rowaccess(::Type{<:BinaryToRowIter}) = true
 Tables.rows(x::BinaryToRowIter) = x

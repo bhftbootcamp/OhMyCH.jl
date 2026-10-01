@@ -51,14 +51,18 @@ an internal `ReentrantLock` because the wrapped libcurl handle is not concurrenc
 - `config::CHConfig`: Connection configuration, including URL, database name, and credentials.
 - `curl_client::CurlClient`: Handles HTTP communication with the database server.
 - `lock::ReentrantLock`: Serializes access to `curl_client`.
+- `schemas::Dict{String,Vector{Column}}`: Table schemas learned by [`table_schema`](@ref),
+  one `DESCRIBE TABLE` per table per client; an insert that the server rejects forgets
+  its table's entry, so the next insert looks again.
 """
 mutable struct CHClient
     config::CHConfig
     curl_client::CurlClient
     lock::ReentrantLock
+    const schemas::Dict{String,Vector{Column}}
 
     function CHClient(config::CHConfig, curl_client::CurlClient)
-        c = new(config, curl_client, ReentrantLock())
+        c = new(config, curl_client, ReentrantLock(), Dict{String,Vector{Column}}())
         finalizer(close, c)
         return c
     end
@@ -337,21 +341,71 @@ function execute(
     return nothing
 end
 
-_build_insert_sql(table::AbstractString) =
-    occursin(r"^\s*INSERT\s"i, table) ?
-        string(table, " FORMAT RowBinary") :
-        string("INSERT INTO ", table, " FORMAT RowBinary")
+"""
+    table_schema(client::CHClient, table::AbstractString; refresh = false) -> Vector{Column}
+
+The columns of `table` — name, type, default kind — as `DESCRIBE TABLE`
+reports them, in table order. Asked of the server once per table per client
+and remembered; `refresh = true` asks again (after an `ALTER TABLE`).
+
+## Examples
+
+```julia-repl
+julia> table_schema(client, "employees")
+3-element Vector{OhMyCH.Column}:
+ OhMyCH.Column("name", String, "")
+ OhMyCH.Column("age", Int32, "")
+ OhMyCH.Column("salary", Float64, "")
+```
+"""
+function table_schema(client::CHClient, table::AbstractString; refresh::Bool = false)
+    key = String(table)
+    lock(client.lock) do
+        refresh && delete!(client.schemas, key)
+        get!(client.schemas, key) do
+            rows = collect(query(client, "DESCRIBE TABLE " * key))
+            Column[Column(String(r.name), parse_ch_type(String(r.type)), String(r.default_type)) for r in rows]
+        end
+    end
+end
+
+"""
+    insert_plan(client::CHClient, table::AbstractString, ::Type{T}) -> (sql, plan)
+
+How rows of type `T` go into `table`. A table name becomes
+`INSERT INTO table (a, b, …) FORMAT RowBinary` naming the columns the fields
+of `T` name (a struct or `NamedTuple`) or, for a `Tuple`, the table's
+columns in order (`ALIAS` and `MATERIALIZED` ones excluded — the server
+computes those); every field is then written as its column's own type, see
+[`serialize`](@ref). A field that names no column is an `ArgumentError`
+before anything is sent.
+
+A full `INSERT INTO …` statement is sent as written, and rows are written
+from their Julia types alone (`plan === nothing`): the statement already
+says which columns, in which order.
+"""
+function insert_plan(client::CHClient, table::AbstractString, ::Type{T}) where {T}
+    occursin(r"^\s*INSERT\s"i, table) && return (string(table, " FORMAT RowBinary"), nothing)
+    columns = table_schema(client, table)
+    T <: Tuple && (columns = filter(c -> !(c.default_kind in ("ALIAS", "MATERIALIZED")), columns))
+    positions = column_positions(T, columns; what = "table $table")
+    chosen = columns[positions]
+    sql = string("INSERT INTO ", table, " (", join((_quote_identifier(c.name) for c in chosen), ", "),
+                 ") FORMAT RowBinary")
+    return (sql, Pair{Int,CHType}[i => chosen[i].type for i in eachindex(chosen)])
+end
 
 function _chunked_insert!(
     client::CHClient,
     sql::String,
     values::AbstractVector;
     chunk_size::Integer = 256 * 1024,
+    plan::Union{Nothing,Vector{Pair{Int,CHType}}} = nothing,
     kw...,
 )
     cs = Int(chunk_size)
     total = 0
-    for batch in RowToBinaryIter(values, cs)
+    for batch in RowToBinaryIter(values, cs; plan)
         _perform_query(client, sql; body = batch, kw...)
         total += length(batch)
     end
@@ -362,7 +416,21 @@ end
     insert(client::CHClient, table::String, values::Vector; options...)
 
 Inserts `values` into the specified `table` using the [`CHClient`](@ref) `client`.
-The `table` argument can be a simple table name (e.g. `"my_table"`) or a full `INSERT INTO ...` statement for custom cases.
+
+Given a table name, the columns are named after the fields of the row type:
+`INSERT INTO table (a, b, …)`, so a struct's field order need not follow the
+table's column order, and every value is written as its column's own type —
+an `Int` into an `Int32` column, a `DateTime` into a `DateTime64(3)`, a
+`Float64` into a `Decimal(18, 8)`, `missing` into a `Nullable`. The table's
+schema is asked of the server once per client ([`table_schema`](@ref)). Rows
+that are `Tuple`s fill the table's columns in order. A field that names no
+column throws `ArgumentError` before anything is sent.
+
+Given a full `INSERT INTO ...` statement (e.g. `"INSERT INTO t (b, a)"`), it
+is sent as written and values are serialized from their Julia types alone,
+positionally — so they must already be the columns' exact types (an `Int32`
+for an `Int32` column; a `NanoDate` is written as nanoseconds and fits a
+`DateTime64(9)` only).
 
 ## Keyword arguments
 - `chunk_size::Int`: Specifies the approximate size (in bytes) of one chunk of data being sent (default: `256 * 1024` bytes).
@@ -383,8 +451,8 @@ julia> struct Employee
 julia> client = connect("http://127.0.0.1:8123")
 
 julia> insert(client, "employees", [
-           Employee("Alice", Int32(29), 75000.5),
-           Employee("Bob",   Int32(35), 92000.0),
+           Employee("Alice", 29, 75000.5),
+           Employee("Bob",   35, 92000.0),
        ])
 ```
 """
@@ -398,16 +466,26 @@ function insert(
     max_execution_time::Int = 60,
     options...,
 ) where {T}
-    _chunked_insert!(
-        client,
-        _build_insert_sql(table),
-        values;
-        chunk_size = chunk_size,
-        compression = compression,
-        read_timeout = read_timeout,
-        max_execution_time = max_execution_time,
-        options...,
-    )
+    isempty(values) && return nothing
+    sql, plan = insert_plan(client, table, T)
+    try
+        _chunked_insert!(
+            client,
+            sql,
+            values;
+            chunk_size = chunk_size,
+            plan = plan,
+            compression = compression,
+            read_timeout = read_timeout,
+            max_execution_time = max_execution_time,
+            options...,
+        )
+    catch e
+        # the schema we planned by may be stale (ALTER TABLE): forget it, so
+        # the next insert asks the server again
+        e isa CHServerException && lock(() -> delete!(client.schemas, String(table)), client.lock)
+        rethrow()
+    end
     return nothing
 end
 
@@ -564,6 +642,12 @@ julia> fetch_all(client, "SELECT * FROM employees", Employee)
  Employee("Bob", 35, 92000.0)
  ...
 ```
+
+With a type `T`, columns are matched to fields by name, so the `SELECT` may
+list them in any order or include extra ones, and each value is coerced to
+its field's type (an `Int32` column into an `Int` field, a `DateTime64`
+into a `DateTime`, a `Nullable` into a `Union{Missing,T}`). A field without
+a column is an `ArgumentError` naming it; see [`eachrow`](@ref).
 """
 function fetch_all(client::CHClient, sql::AbstractString, params::NamedTuple = NamedTuple(); kw...)
     return collect(query(client, sql, params; kw...))

@@ -57,7 +57,8 @@ InsertStats(rows=5000, bytes=..., transactions=5)
 mutable struct Inserter{T, K<:NamedTuple}
     client::CHClient
     table::String
-    sql::String
+    sql::Union{Nothing,String}                        # resolved with the first flush (insert_plan)
+    plan::Union{Nothing,Vector{Pair{Int,CHType}}}
     buffer::Vector{T}
     serializer::Serializer
     avg_row_bytes::Float64
@@ -115,7 +116,8 @@ function Inserter{T}(
     ins = Inserter{T, typeof(nt)}(
         client,
         String(table),
-        _build_insert_sql(table),
+        nothing,
+        nothing,
         T[],
         Serializer(),
         0.0,
@@ -204,14 +206,19 @@ function Base.write(ins::Inserter{T}, row) where {T}
     return nothing
 end
 
-function _flush_locked(ins::Inserter)
+function _flush_locked(ins::Inserter{T}) where {T}
     n = length(ins.buffer)
     if n == 0
         ins.last_commit_time = time()
         return InsertStats(0, 0, 0)
     end
     try
-        bytes = _chunked_insert!(ins.client, ins.sql, ins.buffer; ins.kw...)
+        # the table's columns are looked up on the first flush, not at
+        # construction: making an Inserter does no I/O
+        if ins.sql === nothing
+            ins.sql, ins.plan = insert_plan(ins.client, ins.table, T)
+        end
+        bytes = _chunked_insert!(ins.client, ins.sql, ins.buffer; plan = ins.plan, ins.kw...)
         flush_stats = InsertStats(n, bytes, 1)
         ins.stats = ins.stats + flush_stats
         ins.avg_row_bytes = Float64(bytes) / n
