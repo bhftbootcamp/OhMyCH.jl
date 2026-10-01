@@ -106,6 +106,8 @@ FixedString
 ## Exceptions
 
 ```@docs
+OhMyCH.retryable
+OhMyCH.HTTPStatusError
 OhMyCHException
 CHServerException
 CHClientException

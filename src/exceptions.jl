@@ -65,6 +65,19 @@ function Base.show(io::IO, e::CHClientException)
     end
 end
 
+"""
+    HTTPStatusError <: Exception
+
+The cause of a [`CHClientException`](@ref) raised for an HTTP status of 400 or
+above that carried no ClickHouse exception code — a proxy or load balancer
+answering for the server (502, 503, 504), or a malformed request (400).
+"""
+struct HTTPStatusError <: Exception
+    status::Int
+end
+
+Base.showerror(io::IO, e::HTTPStatusError) = print(io, "HTTP status ", e.status)
+
 function check_and_throw_exception(x::AbstractVector{UInt8})
     length(x) > 3 && x[end-2:end] == b"))\n" && parse_and_throw_exception(x)
     return nothing

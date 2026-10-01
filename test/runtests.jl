@@ -3,6 +3,12 @@ using OhMyCH
 using Dates, NanoDates, UUIDs
 import Sockets: IPv4, IPv6
 using Tables
+using EasyCurl
+
+# stands in for EasyCurl.CurlEasyError, whose constructor needs a live handle
+struct FakeCurlError <: EasyCurl.AbstractCurlError
+    code::Int
+end
 
 import OhMyCH: Serializer, serialize, write_leb128, parse_column_type
 
@@ -58,6 +64,50 @@ end
         @test config.retry == 0
         @test config.retry_delay == 1.0
         @test config.verify_ssl == true
+        # connect's defaults: two retries, a second before the first
+        c = connect("http://localhost:8123")
+        @test c.config.retry == 2 && c.config.retry_delay == 1.0
+        close(c)
+        @test_throws ArgumentError connect("http://localhost:8123"; retry = -1)
+    end
+
+    @testset "every request waits for the end of the query unless told otherwise" begin
+        params = OhMyCH._build_query_params("SELECT 1", NamedTuple(), pairs((max_threads = 2,)))
+        @test params["wait_end_of_query"] == "1" && params["max_threads"] == 2 && params["query"] == "SELECT 1"
+        params = OhMyCH._build_query_params("SELECT 1", NamedTuple(), pairs((wait_end_of_query = 0,)))
+        @test params["wait_end_of_query"] == 0
+        # no server-side timeout unless asked for: the one timeout is the client's
+        @test OhMyCH._setting(:max_execution_time, nothing) == ()
+        @test OhMyCH._setting(:max_execution_time, 5) == (:max_execution_time => 5,)
+    end
+
+    @testset "retry policy: what is safe to repeat" begin
+        import OhMyCH: retryable, HTTPStatusError
+        curl(code) = CHClientException("curl", FakeCurlError(code))
+        # the request never reached the server: safe for any statement
+        for code in (6, 7, 35)
+            @test retryable(curl(code), false) && retryable(curl(code), true)
+        end
+        # it may have: a read only
+        for code in (28, 52, 56)
+            @test !retryable(curl(code), false) && retryable(curl(code), true)
+        end
+        @test !retryable(curl(3), true)   # URL_MALFORMED: never
+        # the server said "not now" before any work: any statement
+        for code in (202, 252)
+            @test retryable(CHServerException(code, "busy"), false)
+        end
+        # the server cut a read short: a read only
+        for code in (209, 210, 236, 242, 999)
+            @test !retryable(CHServerException(code, "x"), false) && retryable(CHServerException(code, "x"), true)
+        end
+        @test !retryable(CHServerException(60, "UNKNOWN_TABLE"), true)   # a real error: never
+        @test !retryable(CHServerException(395, "throwIf"), true)
+        # a proxy answering for the server: a read only
+        @test retryable(CHClientException("HTTP 503", HTTPStatusError(503)), true)
+        @test !retryable(CHClientException("HTTP 503", HTTPStatusError(503)), false)
+        @test !retryable(CHClientException("HTTP 400", HTTPStatusError(400)), true)
+        @test !retryable(ArgumentError("x"), true)
     end
 
     @testset "CHConfig with custom settings" begin

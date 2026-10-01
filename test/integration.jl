@@ -42,6 +42,51 @@ end
 
 @testset "Integration tests" begin
 
+    @testset "query settings: wait_end_of_query on, no hidden max_execution_time" begin
+        _with_client() do client
+            # wait_end_of_query is an HTTP-interface parameter, not a setting the
+            # query can read back: its effect is the exception code below; here
+            # only that a caller may turn it off and still get a result
+            @test length(fetch_all(client, "SELECT number FROM numbers(10)"; wait_end_of_query = 0)) == 10
+            # the server's own setting applies unless the caller asks for a limit
+            @test fetch_one(client, "SELECT getSetting('max_execution_time') AS t").t == 0
+            @test fetch_one(client, "SELECT getSetting('max_execution_time') AS t"; max_execution_time = 7).t == 7
+            # an error in the middle of a result is a proper exception with its code,
+            # not a truncated body
+            err = try
+                fetch_all(client, "SELECT throwIf(number = 50000, 'boom') FROM numbers(100000)")
+            catch e
+                e
+            end
+            @test err isa CHServerException
+            @test err.code == OhMyCH.FUNCTION_THROW_IF_VALUE_IS_NON_ZERO
+            @test occursin("boom", err.message)
+        end
+    end
+
+    @testset "retries: a connection refused is tried again, then reported" begin
+        closed = connect("http://127.0.0.1:9"; retry = 2, retry_delay = 0.2)
+        try
+            t = @elapsed err = try
+                query(closed, "SELECT 1")
+            catch e
+                e
+            end
+            @test err isa CHClientException
+            @test err.cause isa EasyCurl.AbstractCurlError
+            @test t >= 0.6   # 0.2 s, then 0.4 s between three attempts
+            @test !ping(closed)
+        finally
+            close(closed)
+        end
+        none = connect("http://127.0.0.1:9"; retry = 0)
+        try
+            @test (@elapsed @test_throws CHClientException query(none, "SELECT 1")) < 0.5
+        finally
+            close(none)
+        end
+    end
+
     @testset "connect / ping / server_version / close" begin
         _with_client() do client
             @test isopen(client)

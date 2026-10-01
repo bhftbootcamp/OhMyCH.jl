@@ -48,6 +48,15 @@ connect("http://127.0.0.1:8123") do client
 end
 ```
 
+Timeouts and retries: `connect_timeout` and `read_timeout` are the client's; the server
+runs a query as long as its own settings allow, unless `max_execution_time` is passed with
+the query. A request that never reached the server, or that the server refused because it
+was busy, is tried again (`retry`, default 2, with `retry_delay` doubling each time); a read
+is also retried after a timeout, a dropped connection or a `5xx` from a proxy, while
+`execute` and the inserts are not — they may have reached the server. Every request waits
+for the end of the query, so an error in the middle of a result arrives as an exception
+with its code rather than a truncated body.
+
 ## Type mapping
 
 | ClickHouse Type      | Julia Type            |

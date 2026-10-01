@@ -12,8 +12,8 @@ All fields are plain data types, making the config easily serializable to/from T
 - `compression::Symbol`: Compression codec (`:lz4` or `:none`).
 - `connect_timeout::Float64`: TCP connection timeout in seconds.
 - `read_timeout::Float64`: Total HTTP operation timeout in seconds.
-- `retry::Int`: Number of retry attempts on transient errors.
-- `retry_delay::Float64`: Delay between retries in seconds.
+- `retry::Int`: How many times a failed request is tried again (see the Retries section of [`connect`](@ref)).
+- `retry_delay::Float64`: Delay before the first retry in seconds; it doubles with every further one.
 - `verify_ssl::Bool`: Verify SSL certificates (both peer and host) for HTTPS.
 """
 struct CHConfig
@@ -100,7 +100,7 @@ true
 """
 function ping(client::CHClient)
     try
-        _perform_query(client, "SELECT 1"; read_timeout = 5)
+        _perform_query(client, "SELECT 1"; read_timeout = 5, idempotent = true)
         return true
     catch e
         e isa InterruptException && rethrow()
@@ -123,7 +123,7 @@ julia> server_version(client)
 ```
 """
 function server_version(client::CHClient)
-    res = _perform_query(client, "SELECT version() FORMAT TabSeparated"; read_timeout = 5)
+    res = _perform_query(client, "SELECT version() FORMAT TabSeparated"; read_timeout = 5, idempotent = true)
     return strip(String(res))
 end
 
@@ -145,10 +145,33 @@ The client reuses the underlying TCP connection across requests (HTTP keep-alive
 - `password::String`: Password for authentication (default: `""`).
 - `compression::Symbol`: Compression codec, `:lz4` or `:none` (default: `:lz4`).
 - `connect_timeout::Real`: TCP connection timeout in seconds (default: `10`).
-- `read_timeout::Real`: Total HTTP operation timeout in seconds (default: `300`).
-- `retry::Int`: Number of retry attempts on transient errors (default: `0`).
-- `retry_delay::Real`: Delay between retries in seconds (default: `1.0`).
+- `read_timeout::Real`: Total HTTP operation timeout in seconds (default: `300`). The one
+  timeout the client imposes; the server runs a query as long as its own settings allow,
+  unless `max_execution_time` is passed with the query.
+- `retry::Int`: How many times a failed request is tried again (default: `2`); `0` disables.
+- `retry_delay::Real`: Delay before the first retry in seconds (default: `1.0`); doubles each time.
 - `verify_ssl::Bool`: Whether to verify SSL certificates (default: `true`).
+
+## Retries
+
+A request is tried again when the failure says nothing was done or that doing
+it again is harmless: the host did not resolve or accept the connection, or
+the server refused the query because it was busy (`TOO_MANY_SIMULTANEOUS_QUERIES`,
+`TOO_MANY_PARTS`). A **read** (`query`, `query_binary`, the `fetch_*` helpers,
+`ping`, `server_version`) is also retried after a timeout, a dropped
+connection, a `502`/`503`/`504` from a proxy, and the server's own transient
+codes (`SOCKET_TIMEOUT`, `NETWORK_ERROR`, `ABORTED`, `TABLE_IS_READ_ONLY`,
+`KEEPER_EXCEPTION`): running it twice changes nothing. `execute` and the
+inserts are **not** retried after such failures — the statement may have
+reached the server — and surface them at once. Each retry logs a warning.
+
+## Mid-query errors
+
+Every request asks the server to `wait_end_of_query`: the response starts
+only when the query has finished, so an error in the middle of a result
+(a `throwIf`, a memory limit) arrives as a proper HTTP status with its
+exception code, not as a truncated body with the error text at the end.
+Pass `wait_end_of_query = 0` with a query to stream instead.
 
 ## Examples
 
@@ -168,11 +191,12 @@ function connect(
     compression::Symbol = :lz4,
     connect_timeout::Real = 10,
     read_timeout::Real = 300,
-    retry::Int = 0,
+    retry::Int = 2,
     retry_delay::Real = 1.0,
     verify_ssl::Bool = true,
 )
     resolve_codec(compression)
+    retry >= 0 || throw(ArgumentError("retry must be nonnegative, got $retry"))
 
     config = CHConfig(
         url, database, user, password, compression,
@@ -211,9 +235,44 @@ function _build_query_params(sql::String, parameters::NamedTuple, options)
     for (k, v) in parameters_to_strings(parameters)
         params[k] = v
     end
+    # an error in the middle of a result must arrive as a status and an
+    # exception code, not as a truncated body: the server answers when the
+    # query is done. A caller who wants the stream says so explicitly.
+    haskey(params, "wait_end_of_query") || (params["wait_end_of_query"] = "1")
     params["query"] = sql
     return params
 end
+
+# libcurl result codes (curl/curl.h) that mean the request never reached the
+# server — safe to repeat for any statement — and those that mean it may have:
+# a timeout, nothing received, a dropped connection — safe for a read only
+const _CURL_NOT_SENT = (6, 7, 35)          # COULDNT_RESOLVE_HOST, COULDNT_CONNECT, SSL_CONNECT_ERROR
+const _CURL_INTERRUPTED = (18, 28, 52, 55, 56)  # PARTIAL_FILE, OPERATION_TIMEDOUT, GOT_NOTHING, SEND_ERROR, RECV_ERROR
+
+# server codes that say "not now" before any work was done (any statement),
+# and those that say a read was cut short (reads only)
+const _CH_REFUSED = (202, 252)              # TOO_MANY_SIMULTANEOUS_QUERIES, TOO_MANY_PARTS
+const _CH_INTERRUPTED = (209, 210, 236, 242, 999)  # SOCKET_TIMEOUT, NETWORK_ERROR, ABORTED, TABLE_IS_READ_ONLY, KEEPER_EXCEPTION
+
+_error_code(e::CHServerException) = e.code isa ErrorCodes ? Int(e.code) : e.code
+
+"""
+    retryable(e::Exception, idempotent::Bool) -> Bool
+
+Whether a failed request should be tried again: see the Retries section of [`connect`](@ref).
+`idempotent` is `true` for a read, whose repetition is harmless.
+"""
+retryable(e::CHServerException, idempotent::Bool) =
+    _error_code(e) in _CH_REFUSED || (idempotent && _error_code(e) in _CH_INTERRUPTED)
+
+function retryable(e::CHClientException, idempotent::Bool)
+    cause = e.cause
+    cause isa AbstractCurlError && return cause.code in _CURL_NOT_SENT || (idempotent && cause.code in _CURL_INTERRUPTED)
+    cause isa HTTPStatusError && return idempotent && cause.status in (502, 503, 504)
+    return false
+end
+
+retryable(::Exception, ::Bool) = false
 
 function _perform_query(
     client::CHClient,
@@ -225,6 +284,7 @@ function _perform_query(
     read_timeout::Real = client.config.read_timeout,
     retry::Int = client.config.retry,
     retry_delay::Real = client.config.retry_delay,
+    idempotent::Bool = false,
     options...,
 )
     codec = resolve_codec(compression)
@@ -241,6 +301,25 @@ function _perform_query(
     end
     params = _build_query_params(sql, parameters, options)
     params["enable_http_compression"] = compress ? "1" : "0"
+    payload = compress ? encode(codec, body) : body
+    attempt = 0
+    while true
+        attempt += 1
+        try
+            return _request(client, headers, params, payload, codec, compress, enc, connect_timeout, read_timeout)
+        catch e
+            (attempt <= retry && retryable(e, idempotent)) || rethrow()
+            delay = retry_delay * 2.0^(attempt - 1)
+            @warn "OhMyCH: request failed, retrying" attempt = "$attempt of $retry" delay_s = delay error = sprint(showerror, e)
+            sleep(delay)
+        end
+    end
+end
+
+# one HTTP round trip: the request, the decoding of the response and the
+# translation of every failure into the client's exceptions
+function _request(client::CHClient, headers, params, payload, codec, compress::Bool, enc,
+                  connect_timeout::Real, read_timeout::Real)
     req = try
         lock(client.lock) do
             http_request(
@@ -249,11 +328,10 @@ function _perform_query(
                 client.config.url,
                 headers = headers,
                 query = params,
-                body = compress ? encode(codec, body) : body,
+                body = payload,
                 connect_timeout = ceil(Int, connect_timeout),
                 read_timeout = ceil(Int, read_timeout),
-                retry = retry,
-                retry_delay = retry_delay,
+                retry = 0,   # retries are the client's (see `retryable`), with their own policy
                 ssl_verifyhost = client.config.verify_ssl,
                 ssl_verifypeer = client.config.verify_ssl,
                 status_exception = false,
@@ -280,9 +358,14 @@ function _perform_query(
     code = http_header(req, "x-clickhouse-exception-code", nothing)
     isnothing(code) || throw(CHServerException(code, res))
     check_and_throw_exception(res)
-    req.status >= 400 && throw(CHClientException("HTTP $(req.status): $(String(res))"))
+    req.status >= 400 && throw(CHClientException("HTTP $(req.status): $(String(res))", HTTPStatusError(req.status)))
     return res
 end
+
+# a query setting the caller may leave unset: nothing → no option is sent, so
+# the server's own value applies
+_setting(name::Symbol, ::Nothing) = ()
+_setting(name::Symbol, value) = (name => value,)
 
 """
     execute(client::CHClient, sql::String [, parameters::NamedTuple]; options...)
@@ -293,7 +376,7 @@ Values that need to be substituted into the query can be specified as `parameter
 ## Keyword arguments
 - `compression::Symbol`: Compression codec, `:lz4` or `:none` (default: client's compression).
 - `read_timeout::Real`: Total HTTP operation timeout in seconds (default: client's read_timeout).
-- `max_execution_time::Int`: ClickHouse server-side query timeout in seconds (default: `60` seconds).
+- `max_execution_time::Int`: Server-side query timeout in seconds, when the server should enforce one (default: none — the server's own setting applies).
 - `options...`: Additional [options](https://clickhouse.com/docs/en/operations/settings/settings) passed to the query execution function.
 
 ## Examples
@@ -322,7 +405,7 @@ function execute(
     parameters::NamedTuple = NamedTuple();
     compression::Symbol = client.config.compression,
     read_timeout::Real = client.config.read_timeout,
-    max_execution_time::Int = 60,
+    max_execution_time::Union{Nothing,Int} = nothing,
     options...,
 )
     _perform_query(
@@ -331,7 +414,7 @@ function execute(
         parameters = parameters,
         compression = compression,
         read_timeout = read_timeout,
-        max_execution_time = max_execution_time,
+        _setting(:max_execution_time, max_execution_time)...,
         options...,
     )
     return nothing
@@ -368,7 +451,7 @@ The `table` argument can be a simple table name (e.g. `"my_table"`) or a full `I
 - `chunk_size::Int`: Specifies the approximate size (in bytes) of one chunk of data being sent (default: `256 * 1024` bytes).
 - `compression::Symbol`: Compression codec, `:lz4` or `:none` (default: client's compression).
 - `read_timeout::Real`: Total HTTP operation timeout in seconds (default: client's read_timeout).
-- `max_execution_time::Int`: ClickHouse server-side query timeout in seconds (default: `60` seconds).
+- `max_execution_time::Int`: Server-side query timeout in seconds, when the server should enforce one (default: none — the server's own setting applies).
 - `options...`: Additional [options](https://clickhouse.com/docs/en/operations/settings/settings) passed to the query execution function.
 
 ## Examples
@@ -395,7 +478,7 @@ function insert(
     chunk_size::Integer = 256 * 1024,
     compression::Symbol = client.config.compression,
     read_timeout::Real = client.config.read_timeout,
-    max_execution_time::Int = 60,
+    max_execution_time::Union{Nothing,Int} = nothing,
     options...,
 ) where {T}
     _chunked_insert!(
@@ -405,7 +488,7 @@ function insert(
         chunk_size = chunk_size,
         compression = compression,
         read_timeout = read_timeout,
-        max_execution_time = max_execution_time,
+        _setting(:max_execution_time, max_execution_time)...,
         options...,
     )
     return nothing
@@ -437,7 +520,7 @@ function insert_binary(
     values::T;
     compression::Symbol = client.config.compression,
     read_timeout::Real = client.config.read_timeout,
-    max_execution_time::Int = 60,
+    max_execution_time::Union{Nothing,Int} = nothing,
     options...,
 ) where {T<:RowBinaryResult}
     _perform_query(
@@ -446,7 +529,7 @@ function insert_binary(
         body = readavailable(values.s),
         compression = compression,
         read_timeout = read_timeout,
-        max_execution_time = max_execution_time,
+        _setting(:max_execution_time, max_execution_time)...,
         options...,
     )
     return nothing
@@ -465,7 +548,7 @@ Values that need to be substituted into the query can be specified as `parameter
 ## Keyword arguments
 - `compression::Symbol`: Compression codec, `:lz4` or `:none` (default: client's compression).
 - `read_timeout::Real`: Total HTTP operation timeout in seconds (default: client's read_timeout).
-- `max_execution_time::Int`: ClickHouse server-side query timeout in seconds (default: `60` seconds).
+- `max_execution_time::Int`: Server-side query timeout in seconds, when the server should enforce one (default: none — the server's own setting applies).
 - `options...`: Additional [options](https://clickhouse.com/docs/en/operations/settings/settings) passed to the query execution function.
 
 See also [`eachrow`](@ref), [`collect`](@ref), [`fetch_all`](@ref), [`fetch_one`](@ref), [`fetch_optional`](@ref).
@@ -489,16 +572,17 @@ function query(
     parameters::NamedTuple = NamedTuple();
     compression::Symbol = client.config.compression,
     read_timeout::Real = client.config.read_timeout,
-    max_execution_time::Int = 60,
+    max_execution_time::Union{Nothing,Int} = nothing,
     options...,
 )
     res = _perform_query(
         client,
         sql * " FORMAT RowBinaryWithNamesAndTypes";
+        idempotent = true,
         parameters = parameters,
         compression = compression,
         read_timeout = read_timeout,
-        max_execution_time = max_execution_time,
+        _setting(:max_execution_time, max_execution_time)...,
         options...,
     )
     return RowBinaryWithNamesAndTypes(res)
@@ -530,16 +614,17 @@ function query_binary(
     parameters::NamedTuple = NamedTuple();
     compression::Symbol = client.config.compression,
     read_timeout::Real = client.config.read_timeout,
-    max_execution_time::Int = 60,
+    max_execution_time::Union{Nothing,Int} = nothing,
     options...,
 )
     res = _perform_query(
         client,
         sql * " FORMAT RowBinary";
+        idempotent = true,
         parameters = parameters,
         compression = compression,
         read_timeout = read_timeout,
-        max_execution_time = max_execution_time,
+        _setting(:max_execution_time, max_execution_time)...,
         options...,
     )
     return RowBinary(res)
